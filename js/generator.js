@@ -1,4 +1,4 @@
-// Trophic — Phase 2 procedural worlds: archetypes, niche slots, genome sampling with quirks, food webs,
+// Keystone — Phase 2 procedural worlds: archetypes, niche slots, genome sampling with quirks, food webs,
 // names and colours, founder rolls, and the 5-round headless stability test.
 window.Trophic = window.Trophic || {};
 

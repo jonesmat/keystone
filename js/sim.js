@@ -1,4 +1,4 @@
-// Trophic — deterministic fixed-step ecosystem simulation (Phase 2: every individual carries a genome).
+// Keystone — deterministic fixed-step ecosystem simulation (Phase 2: every individual carries a genome).
 // Pure logic: no DOM access, so it also runs headless under Node for tuning and seed sweeps.
 window.Trophic = window.Trophic || {};
 

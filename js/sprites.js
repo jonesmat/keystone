@@ -1,4 +1,4 @@
-// Trophic — procedural side-view creature art assembled from genes (body plan, coat, armour, weapons),
+// Keystone — procedural side-view creature art assembled from genes (body plan, coat, armour, weapons),
 // tinted by trophic level and each species' hue shift. Used by the editor, Codex, cards and close-up map view.
 window.Trophic = window.Trophic || {};
 

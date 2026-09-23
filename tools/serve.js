@@ -17,4 +17,4 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': (types[path.extname(file)] || 'application/octet-stream') + '; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(data);
   });
-}).listen(port, () => console.log('Trophic at http://localhost:' + port));
+}).listen(port, () => console.log('Keystone at http://localhost:' + port));

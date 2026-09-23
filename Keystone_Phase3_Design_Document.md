@@ -1,10 +1,10 @@
-# Trophic — Phase 3 Design: Textbook Energy Flow
+# Keystone — Phase 3 Design: Textbook Energy Flow
 
 Sep 23, 2026 · @Matt
 
 ## Overview
 
-Phase 3 rebuilds Trophic's energy model around the textbook's chain of named efficiencies. That chain runs from GPP to NPP, then harvesting, assimilation and tissue growth. On top of it, Phase 3 adds a nitrogen cycle, population accounting, species interactions and succession, so the game teaches the same concepts, with the same terms and numbers, as the Unit 5 Ecological Concepts chapter (pp. 187–213).
+Phase 3 rebuilds Keystone's energy model around the textbook's chain of named efficiencies. That chain runs from GPP to NPP, then harvesting, assimilation and tissue growth. On top of it, Phase 3 adds a nitrogen cycle, population accounting, species interactions and succession, so the game teaches the same concepts, with the same terms and numbers, as the Unit 5 Ecological Concepts chapter (pp. 187–213).
 
 **Where Phase 2 diverges from the text**
 
@@ -689,7 +689,7 @@ The climatic zone (tropical, temperate or polar) sets sunlight and season amplit
 
 ## UI changes
 
-The UI keeps the Phase 2 visual language (Trophic\_UI\_Design). It gains views that name the textbook's quantities directly, so a student can read a number in the game and find the same term in the chapter.
+The UI keeps the Phase 2 visual language (Keystone\_UI\_Design). It gains views that name the textbook's quantities directly, so a student can read a number in the game and find the same term in the chapter.
 
 | Screen                                | Change                      | Details                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

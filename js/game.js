@@ -1,4 +1,4 @@
-// Trophic — Phase 2 controller: New world setup (generated rosters + stability test), the round loop
+// Keystone — Phase 2 controller: New world setup (generated rosters + stability test), the round loop
 // (Evolve → Simulate → Selection report), breeding orders, speciation choices, phylogeny records,
 // victory/defeat, events, save/load (v2 with v1 migration) and input.
 window.Trophic = window.Trophic || {};
@@ -701,7 +701,7 @@ window.Trophic = window.Trophic || {};
 
   G.loadData = function (data) {
     try {
-      if (!data || !data.world || !data.run || (data.v !== 1 && data.v !== 2)) throw new Error('Not a Trophic save file');
+      if (!data || !data.world || !data.run || (data.v !== 1 && data.v !== 2)) throw new Error('Not a Keystone save file');
       G.cancelGen();
       const w = T.loadWorld(data.world, { debug: G.settings.debug });
       G.world = w;
@@ -723,7 +723,7 @@ window.Trophic = window.Trophic || {};
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'trophic-' + (G.run.speciesName || 'run').replace(/\W+/g, '-').toLowerCase() + '-round-' + data.run.round + '.json';
+    a.download = 'keystone-' + (G.run.speciesName || 'run').replace(/\W+/g, '-').toLowerCase() + '-round-' + data.run.round + '.json';
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };

@@ -1,4 +1,4 @@
-// Trophic — all tuning parameters (GDD "Balancing and tuning parameters").
+// Keystone — all tuning parameters (GDD "Balancing and tuning parameters").
 // Kept as a JS file instead of balance.json so the game runs from file:// without a server.
 window.Trophic = window.Trophic || {};
 

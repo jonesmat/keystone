@@ -1,4 +1,4 @@
-// Trophic — Web Audio: generative ambient pad that follows the season, plus short synthesized cues.
+// Keystone — Web Audio: generative ambient pad that follows the season, plus short synthesized cues.
 window.Trophic = window.Trophic || {};
 
 (function (T) {

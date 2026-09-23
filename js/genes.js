@@ -1,4 +1,4 @@
-// Trophic — Phase 2 gene schema. Every individual carries a Float32Array genome indexed by T.G.
+// Keystone — Phase 2 gene schema. Every individual carries a Float32Array genome indexed by T.G.
 window.Trophic = window.Trophic || {};
 
 (function (T) {

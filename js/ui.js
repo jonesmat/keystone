@@ -1,4 +1,4 @@
-// Trophic — shared UI: DOM helpers, World view HUD, floating inspector, and chart drawing
+// Keystone — shared UI: DOM helpers, World view HUD, floating inspector, and chart drawing
 // (histograms, radar, Sankey, population chart). Full screens live in js/screens.js.
 window.Trophic = window.Trophic || {};
 

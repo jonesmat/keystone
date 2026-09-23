@@ -1,4 +1,4 @@
-// Trophic — Phase 2 evolution: inheritance with mutation, speciation by genetic clustering,
+// Keystone — Phase 2 evolution: inheritance with mutation, speciation by genetic clustering,
 // lineage splits, "What evolved" attribution and mutant detection for the player's tray.
 window.Trophic = window.Trophic || {};
 

@@ -1,12 +1,12 @@
-# Trophic — Game Design Document
+# Keystone — Game Design Document
 
 Sep 22, 2026 · @Matt
 
 ## Overview
 
-Trophic is a single-player HTML5 evolution strategy game: you design a species, drop it into a living food web, and evolve it generation by generation until it outcompetes or wipes out every rival NPC species.
+Keystone is a single-player HTML5 evolution strategy game: you design a species, drop it into a living food web, and evolve it generation by generation until it outcompetes or wipes out every rival NPC species.
 
-**High concept:** "Spore's creature editor meets a real energy pyramid." Every calorie in the world starts as sunlight, and every trophic step loses most of it. Power in Trophic is measured in energy units (EU), and the player wins by capturing a larger share of the flow than anyone else.
+**High concept:** "Spore's creature editor meets a real energy pyramid." Every calorie in the world starts as sunlight, and every trophic step loses most of it. Power in Keystone is measured in energy units (EU), and the player wins by capturing a larger share of the flow than anyone else.
 
 **Design pillars**
 

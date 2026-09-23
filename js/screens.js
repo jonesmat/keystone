@@ -1,4 +1,4 @@
-// Trophic — full screens from Trophic_UI_Design: New world, Species editor (Evolve), Selection report,
+// Keystone — full screens from Keystone_UI_Design: New world, Species editor (Evolve), Selection report,
 // Phylogeny, Codex and the run end screen.
 window.Trophic = window.Trophic || {};
 

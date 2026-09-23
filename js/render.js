@@ -1,4 +1,4 @@
-// Trophic — Canvas 2D world renderer: camera, tile map, level-shape icons, variation tint, energy motes.
+// Keystone — Canvas 2D world renderer: camera, tile map, level-shape icons, variation tint, energy motes.
 window.Trophic = window.Trophic || {};
 
 (function (T) {

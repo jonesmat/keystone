@@ -1,4 +1,4 @@
-// Trophic — the textbook energy chain, measured from one round's bookings.
+// Keystone — the textbook energy chain, measured from one round's bookings.
 // GPP -> NPP (plant respiration) -> ingested (harvesting) -> GSP (assimilation) -> NSP (tissue growth).
 // Pure functions over a World's round stats, so the report, the Codex and tools/check-energy.js share one definition.
 window.Trophic = window.Trophic || {};

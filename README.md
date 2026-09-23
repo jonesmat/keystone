@@ -1,11 +1,13 @@
-# Trophic
+# Keystone
 
-A single-player HTML5 evolution strategy game about energy flowing through a living food web.
+A single-player HTML5 ecosystem game about energy flowing through a living food web. Phase 3 turns it into a stewardship game: you keep a real U.S. ecosystem in balance.
 
-- Game design: [Trophic_Game_Design_Document.md](Trophic_Game_Design_Document.md)
-- Phase 2 design (living genomes): [Trophic_Phase2_Design_Document.md](Trophic_Phase2_Design_Document.md)
-- Phase 3 design (textbook energy flow, ecosystem steward): [Trophic_Phase3_Design_Document.md](Trophic_Phase3_Design_Document.md)
-- UI mockups: [Trophic_UI_Design.html](Trophic_UI_Design.html)
+Keystone was called Trophic until Phase 3, and the code still uses `Trophic` as its internal namespace (`window.Trophic`) and in its save keys, so existing saves keep loading.
+
+- Game design: [Keystone_Game_Design_Document.md](Keystone_Game_Design_Document.md)
+- Phase 2 design (living genomes): [Keystone_Phase2_Design_Document.md](Keystone_Phase2_Design_Document.md)
+- Phase 3 design (textbook energy flow, ecosystem steward): [Keystone_Phase3_Design_Document.md](Keystone_Phase3_Design_Document.md)
+- UI mockups: [Keystone_UI_Design.html](Keystone_UI_Design.html)
 
 Plain HTML5, CSS and vanilla JavaScript. No build step, no dependencies. Fonts come from Google Fonts and fall back to system fonts offline.
 

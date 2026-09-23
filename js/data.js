@@ -1,4 +1,4 @@
-// Trophic — static game data: trophic levels, the hand-authored Meadow roster, templates, directives, events,
+// Keystone — static game data: trophic levels, the hand-authored Meadow roster, templates, directives, events,
 // tutorial text and Codex ecology notes. Generated worlds come from js/generator.js.
 window.Trophic = window.Trophic || {};
 
@@ -150,7 +150,7 @@ window.Trophic = window.Trophic || {};
     'apex-scavenger': { title: 'Stealing kills', text: 'Large carnivores often take food from smaller ones. Spotted hyenas and lions steal kills from each other, and cheetahs lose a share of theirs to both.' },
     detritivore: { title: 'The recyclers', text: 'Decomposers return nutrients from dead matter to the soil, where producers can use them again. Energy flows one way through a food web, but nutrients go round in a cycle.' },
     'carrion-specialist': { title: 'Recycling bodies', text: 'Carrion beetles bury small carcasses and raise their young on them, turning a dead body back into soil nutrients within days.' },
-    producer: { title: 'Where the energy starts', text: 'Real plants store only about 1–3% of the sunlight that hits them as new growth. Trophic raises that for playability, but the shape of the pyramid is the same.' },
+    producer: { title: 'Where the energy starts', text: 'Real plants store only about 1–3% of the sunlight that hits them as new growth. Keystone raises that for playability, but the shape of the pyramid is the same.' },
     evolution: { title: 'Selection you can measure', text: 'During a 1977 drought on the Galápagos island Daphne Major, medium ground finches with deeper beaks survived better because they could crack the hard seeds that remained. Peter and Rosemary Grant measured the change in the next generation.' },
   };
 })(window.Trophic);

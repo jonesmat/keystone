@@ -1,4 +1,4 @@
-# Trophic — Phase 2 Design: Living Genomes
+# Keystone — Phase 2 Design: Living Genomes
 
 Sep 23, 2026 · @Matt
 
