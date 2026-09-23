@@ -283,7 +283,7 @@ window.Trophic = window.Trophic || {};
     const def = {
       id: 'g' + idx + '-' + A.id, name: '', level: A.level, archetype: A.id, archetypeName: A.name,
       base: { speed: rr(rng, A.speed), sight: rr(rng, A.sight), apex: A.level === 'carnivore2' },
-      eats: [], flags: Object.assign({}, A.territorial ? { territorial: true } : {}, A.level === 'decomposer' ? { decomposer: true, asexual: true } : {}),
+      eats: [], flags: Object.assign({}, A.territorial ? { territorial: true } : {}, A.level === 'decomposer' ? { decomposer: true, asexual: true, population: true } : {}),
       genome: g, herdSize: A.herd || null,
       startPop: Math.max(2, Math.round(rr(rng, A.pop) * (A.level === 'herbivore' ? clamp(4 / Math.max(1, g[G.size]), 0.4, 1.3) : 1))),
       hue: Math.round(rng.range(-20, 20)), quirks,

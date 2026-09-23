@@ -23,6 +23,8 @@ window.Trophic = window.Trophic || {};
     this.gw = 0; this.gwN = 0; this.lake = 0;
     this.rainEvents = [];
     this.rainMod = 1;
+    // Weather has its own random stream, so the same seed brings the same rain whatever the animals do.
+    this.wrng = new T.RNG(((this.seed * 2654435761) ^ 0x5bd1e995) >>> 0);
     this.tOffset = this.tOffset || 0;
     this.co2 = this.co2 || B.climate.co2Start;
     this.dic = 0;
@@ -134,14 +136,15 @@ window.Trophic = window.Trophic || {};
     const rainfall = this.biome.rain == null ? 60 : this.biome.rain;
     const warm = 1 + 0.05 * this.tOffset;   // a warmer climate: fewer, heavier events, more of them storms
     const pStart = (WB.eventsPerRound / B.roundTicks) * this.rainMod / warm;
-    if (this.rng.chance(pStart)) {
-      const r = this.rng.range(WB.eventRadius[0], WB.eventRadius[1]);
-      const ticks = Math.round(this.rng.range(WB.eventTicks[0], WB.eventTicks[1]));
+    const wr = this.wrng;
+    if (wr.chance(pStart)) {
+      const r = wr.range(WB.eventRadius[0], WB.eventRadius[1]);
+      const ticks = Math.round(wr.range(WB.eventTicks[0], WB.eventTicks[1]));
       // Size each event so a tile averages the biome's annual rainfall over a round.
       const cover = Math.min(1, (Math.PI * r * r) / (N * N));
       const perTile = (rainfall * WB.unitsPerCm) / (WB.eventsPerRound * cover) * warm;
-      this.rainEvents.push({ x: this.rng.range(0, N), y: this.rng.range(0, N), r, left: ticks, rate: perTile / ticks,
-        vx: this.rng.range(-0.05, 0.05), vy: this.rng.range(-0.05, 0.05), storm: this.rng.chance(Math.min(0.8, WB.stormShare * warm)) });
+      this.rainEvents.push({ x: wr.range(0, N), y: wr.range(0, N), r, left: ticks, rate: perTile / ticks,
+        vx: wr.range(-0.05, 0.05), vy: wr.range(-0.05, 0.05), storm: wr.chance(Math.min(0.8, WB.stormShare * warm)) });
     }
     if (!this.rainEvents.length) return;
     const NB = B.nitrogen;
@@ -350,6 +353,7 @@ window.Trophic = window.Trophic || {};
     }
     for (const e of this.ents) if (e.alive) s += e.nT + e.nS;
     for (const c of this.carrion) if (c.alive) s += c.N;
+    for (const sp of this.species) if (sp.grid) s += this.popNitrogen(sp);
     return s;
   };
 
@@ -372,7 +376,7 @@ window.Trophic = window.Trophic || {};
 
   W._cyclesState = function () {
     const o = { gw: this.gw, gwN: this.gwN, gwRef: this.gwRef, lake: this.lake, co2: this.co2, tOffset: this.tOffset, dic: this.dic,
-      climateTrend: this.climateTrend, climateRound: this.climateRound, decompRef: this.decompRef, rainEvents: this.rainEvents, cum: this.cumCycles };
+      climateTrend: this.climateTrend, climateRound: this.climateRound, decompRef: this.decompRef, wrng: this.wrng.s, rainEvents: this.rainEvents, cum: this.cumCycles };
     for (const k of ARRAYS) o[k] = Array.from(this[k], r3);
     return o;
   };
@@ -392,6 +396,7 @@ window.Trophic = window.Trophic || {};
       this.gw = c.gw; this.gwN = c.gwN || 0; this.gwRef = c.gwRef; this.lake = c.lake || 0; this.dic = c.dic || 0;
       this.climateTrend = !!c.climateTrend; this.climateRound = c.climateRound; this.decompRef = c.decompRef; this.rainEvents = c.rainEvents || [];
       if (c.cum) this.cumCycles = c.cum;
+      if (c.wrng != null) this.wrng.s = c.wrng;
       for (let i = 0; i < n; i++) if (this.terrain[i] === 0) this.moist[i] = this.sw[i];
       this._refreshSoilIndex();
     }

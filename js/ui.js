@@ -298,6 +298,43 @@ window.Trophic = window.Trophic || {};
     box.replaceChildren(n, water, carbon);
   };
 
+  // A Population: one species' group in one connected region. Individuals in small-taxa Populations can't be
+  // selected; herds, packs and flocks list their members instead.
+  UI.renderRegionInspector = function (box, sel, close) {
+    const w = G.world, sp = w.species[sel.region.sp];
+    const r = sp && w.regionById(sp.idx, sel.region.id);
+    if (!r) { box.hidden = true; G.renderer.selected = null; return; }
+    box.append(el('div', { class: 'ins-head' }, shapeIcon(sp.level, sp.hue), el('b', { text: sp.name + ' · ' + r.label }),
+      el('span', { class: 'caption', text: sp.grid ? '· Population' : '· group' }), close));
+    const trend = r.n0 > 0 ? r.n / r.n0 - 1 : 0;
+    const kv = el('div', { class: 'ins-kv' },
+      el('div', null, 'N ', el('b', { text: fmt(Math.round(r.n)) })),
+      el('div', null, 'Area ', el('b', { text: r.area + ' tiles' })),
+      el('div', null, 'Density ', el('b', { text: (r.density || 0).toFixed(1) + ' / tile' })),
+      el('div', null, 'Since round start ', el('b', { text: (trend >= 0 ? '+' : '') + Math.round(trend * 100) + '%' })));
+    box.append(kv);
+    if (sp.grid) {
+      const a = { j: 0, b: 0, o: 0 }, g = sp.grid;
+      for (const i of r.tiles) { a.j += g.nJ[i]; a.b += g.nA[i]; a.o += g.nO[i]; }
+      box.append(el('div', { class: 'ins-kv' },
+        el('div', null, 'Juveniles ', el('b', { text: fmt(Math.round(a.j)) })),
+        el('div', null, 'Breeding ', el('b', { text: fmt(Math.round(a.b)) })),
+        el('div', null, 'Post-reproductive ', el('b', { text: fmt(Math.round(a.o)) }))));
+    } else if (r.members && r.members.length) {
+      const list = el('div', { class: 'ins-kv' });
+      for (const id of r.members.slice(0, 8)) {
+        const e = w.ents.find(x => x.id === id && x.alive);
+        if (e) list.append(el('button', { class: 'linklike', text: '#' + String(e.num).padStart(4, '0'), onclick: () => { G.renderer.selected = { ent: e }; UI.renderInspector(); } }));
+      }
+      if (r.members.length > 8) list.append(el('span', { class: 'caption', text: '+' + (r.members.length - 8) + ' more' }));
+      box.append(list);
+    }
+    const hist = (r.history || []).slice(-3).map(h => 'Round ' + h.round + ': ' + h.text);
+    box.append(el('p', { class: 'caption', text: (hist.length ? hist.join(' · ') + '. ' : 'Formed round ' + r.born + '. ') +
+      (sp.grid ? 'Simulated as a Population: individuals can\'t be selected.' : 'The combined home ranges of its members.') }));
+    UI.placeInspector(((r.tiles[0] % w.N) + 0.5), (((r.tiles[0] / w.N) | 0) + 0.5));
+  };
+
   UI.updateRightPanel = function () {
     const w = G.world, run = G.run, p = w.player;
     $('pr-name').textContent = p.name;
@@ -432,6 +469,10 @@ window.Trophic = window.Trophic || {};
     box.hidden = false;
     box.innerHTML = '';
     const close = el('button', { class: 'close', 'aria-label': 'Close inspector', html: '&times;', onclick: () => { G.renderer.selected = null; box.hidden = true; } });
+    if (sel.region) {
+      UI.renderRegionInspector(box, sel, close);
+      return;
+    }
     if (sel.ent) {
       const e = sel.ent, sp = e.sp, st = e.st;
       const stage = e.grow < 1 ? 'juvenile' : e.age > e.life * 0.8 ? 'elder' : 'adult';
@@ -442,6 +483,10 @@ window.Trophic = window.Trophic || {};
         el('div', null, 'Age ', el('b', { text: (e.age / B.roundTicks).toFixed(1) + ' / ' + (e.life / B.roundTicks).toFixed(1) + ' rounds' })),
         el('div', null, 'Parents ', el('b', { text: e.parents ? '#' + String(e.parents[0]).padStart(4, '0') + ' × #' + String(e.parents[1]).padStart(4, '0') : 'founder' })),
         el('div', null, 'Offspring ', el('b', { text: String(e.offspring) })),
+        (() => {
+          const rid = sp.regionMap ? sp.regionMap[w.tileAt(e.x, e.y)] : 0, reg = rid && w.regionById(sp.idx, rid);
+          return reg ? el('div', null, 'Group ', el('button', { class: 'linklike', text: reg.label + ' (' + reg.n + ')', onclick: () => { G.renderer.selected = { region: { sp: sp.idx, id: rid } }; UI.renderInspector(); } })) : el('span');
+        })(),
         el('div', { style: { gridColumn: '1 / -1' } }, (STATE_TEXT[e.state] || (() => e.state))(e) + (e.E < B.starvationThreshold * st.maxE ? ' · starving' : ''))));
       const rows = el('div', { class: 'gene-rows' }, el('div', { class: 'hdr' }, el('span', { text: 'Genes vs species mean' }), el('span', { text: '| Mean' })));
       for (const k of inspectorGenes(sp)) {

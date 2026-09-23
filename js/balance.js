@@ -243,6 +243,22 @@ Trophic.BALANCE = {
     tRange: { ground: 14, tall: 11, vine: 12, woody: 8, aquatic: 10, plankton: 10 },   // producers' temperature envelope half-width
   },
 
+  // ---------- Phase 3: Populations (js/populations.js) ----------
+  // Small, numerous taxa (soil fauna, decomposers, plankton grazers, insects) aren't simulated as individuals but as
+  // Populations: per-tile densities of juveniles, adults and old individuals, with pooled reserves, tissue and nitrogen.
+  populations: {
+    update: 10,             // ticks between Population updates
+    regionEvery: 50,        // ticks between recomputing regions (connected areas) and matching them to the last ones
+    occupied: 0.5,          // a tile is part of a region above this many individuals
+    breedAt: 0.55,          // reserves (share of full) above which adults breed
+    crowdAt: 0.75,          // well-fed tiles above this reserve share send dispersers to their neighbours
+    hungryAt: 0.25,         // hungry tiles below this reserve share send dispersers looking for food
+    disperse: 0.05,         // share of a tile's individuals dispersing per update
+    oldAt: 0.55,            // share of lifespan spent as a breeding adult before post-reproductive age
+    seedBlobs: [3, 6], blobRadius: [2, 5],
+    groupRadius: [2, 6],    // vertebrate groups: tiles within this of a member (by roam) make up the group's region
+  },
+
   // Pyramids (Phase 3). Standing crop is shown as g/m² by treating a tile as a 1 m² sample plot of its ground
   // or water, at 1 g dry weight per EU. Plant counts come from T.PRODUCER_KINDS[kind].perTile.
   gramsPerEU: 1,

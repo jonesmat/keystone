@@ -43,6 +43,7 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `js/data.js` | Trophic levels, the hand-authored Meadow roster, templates, directives, events, tutorial, Codex ecology notes |
 | `js/sim.js` | Fixed-step simulation (10 ticks/s): per-individual stats, juveniles, aging, mate-finding, behaviour genes, producer tile genes, microhabitats, energy ledger, save v2 plus v1 migration. Phase 3: GPP/NPP booking per producer, litterfall, upkeep-only metabolism with thermoregulation, body tissue, ectotherm temperature response |
 | `js/cycles.js` | Phase 3 nutrient, water and carbon cycles: soil nitrogen pools and their bacteria, legume and free-living fixation, excretion by body plan, the nitrogen ledger, rain events, infiltration, runoff, evapotranspiration, groundwater, compaction, peat, open-water carbon uptake and the CO₂/climate trend |
+| `js/populations.js` | Phase 3 two-tier simulation: small taxa as Populations (per-tile densities by age class, pooled reserves, tissue and nitrogen), their feeding, metabolism, births, deaths and dispersal; regions that split and merge with place-based names; herd, pack and flock regions for individually simulated vertebrates |
 | `js/energy.js` | Phase 3 energy chain: measures each round's GPP, NPP, harvesting, assimilation, tissue growth and energy passed up per level, with the textbook ranges and each mode's target bands. Also the three pyramids (numbers, biomass, energy) and the notes that explain an inversion |
 | `js/evolution.js` | Inheritance and mutation, 2-means speciation, lineage splits, "What evolved" attribution, mutant detection, guided mutation and pressure |
 | `js/generator.js` | Archetypes, niche slots, genome sampling with quirks, food webs, names and colours, founder rolls, stability test |
@@ -54,6 +55,7 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `tools/headless.js` | Run one world in Node: `node tools/headless.js grazer 10 12345 [meadow\|generated]` |
 | `tools/sweep.js` | Seed sweep against the Phase 2 balance targets: `node tools/sweep.js --seeds 20 --rounds 30 [--mode generated] [--set key=value] [--csv out.csv]` |
 | `tools/check-events.js` | Smoke tests: inheritance, events, speciation, save round-trip, v1 migration, generator rules |
+| `tools/check-populations.js` | Phase 3 Population checks: ledgers conserved, a cleared strip splits a region and closing it merges them back, predators' kills from Populations are booked, every herd member belongs to one group region, saves keep Populations: `node tools/check-populations.js` |
 | `tools/check-cycles.js` | Phase 3 cycle checks: nitrogen and energy conserved; removing decomposers slows producers; compaction denitrifies and sheds rain; legumes enrich soil; warming hits the south first: `node tools/check-cycles.js [--seeds 2] [--rounds 6]` |
 | `tools/check-pyramids.js` | Phase 3 pyramid checks: in Temperate Meadow and Open Channel the energy pyramid must narrow every round; numbers and biomass are checked against the design's validation table: `node tools/check-pyramids.js [--seeds 3] [--rounds 8]` |
 | `tools/check-energy.js` | Phase 3 energy checks: the textbook's 100,000-unit example must come back within ±10%, then hands-off worlds are measured against each mode's bands: `node tools/check-energy.js [--seeds 3] [--rounds 8] [--mode game\|realism\|both] [--legacy] [--set key=value]` |
@@ -125,6 +127,18 @@ Last `check-pyramids.js` run, 4 seeds × 8 rounds: energy narrowed in every roun
 - **Saves** carry the cycles; older saves start fresh soil pools.
 
 Last `check-cycles.js` run (2 seeds × 5 rounds): all five checks pass. Per round, fixation was about 2,700 N against 2,100 denitrified or leached. Runoff was about a third of rain. Plants were nitrogen-limited up to about 20% of the time, levelling off by round 8. `check-energy.js` and `check-pyramids.js` results are unchanged from milestone 2.
+
+**P3-M4 Ecoregion catalogs: in progress.** The two-tier simulation is built; the catalog format, draws and the open-data build tool come next.
+
+- **Populations:** species flagged `population` (Rotmite, Siltworm, Driftling, Glassclam, and generated decomposers) aren't simulated as individuals. Each keeps a density grid: juveniles, breeding adults and post-reproductive individuals per tile, with pooled reserves, body tissue and nitrogen.
+- **The update:** every 10 ticks each tile feeds from its own food (detritus, plants, fruit), pays metabolism (with thermoregulation and ectotherm torpor), matures, ages, breeds when well fed, and dies of starvation or age. Bodies go to detritus. Crowded or hungry tiles send dispersers to neighbouring tiles the species can live on. Every flow goes through the same energy and nitrogen ledgers and round stats as individuals, so efficiencies, pyramids and the report include them.
+- **Predation:** individual predators graze on Populations where they're densest (Silverfin and Skimgulls on Driftlings), and the prey's deaths are booked as kills.
+- **Regions:** every 50 ticks each species' grid is split into connected regions, which are matched to the previous ones by overlap. A region keeps its place-based name ("Southwest open water", "West thicket") and history. A region cut in two becomes two Populations, one marked as split from the other; touching regions merge. Edges have hysteresis so they don't flicker. The round's notes record splits and merges of real size.
+- **Herds, packs and flocks** of individual animals get group regions from their members' combined home ranges, with a member list.
+- **On the map:** regions are shaded by density and outlined. Zoomed in, they show a scatter of representative icons, which can't be selected. Clicking a region opens its inspector: N, area, density, trend, age classes (or members), and its split and merge history. An individual's inspector links to its group.
+- **Weather** now has its own random stream, so a seed brings the same rain whatever the animals do.
+
+Last `check-populations.js` run: all checks pass. A cleared strip split *West meadow* into *West meadow* and *West marsh*, which merged back once the gap was resettled. Tick cost is about 0.4 ms. Energy, pyramid and cycle checks all still pass.
 
 Predators last longer than in Phase 2: with a Grazer player, apex predators now survive all 10 test rounds, and primary carnivores mostly do. **Realism mode isn't balanced yet:** endotherms and predators die out within 10 rounds.
 

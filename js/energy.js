@@ -184,6 +184,13 @@ window.Trophic = window.Trophic || {};
       numbers[k]++;
       biomass[k] += ((e.E + e.tissue) * g) / area;
     }
+    for (const sp of w.species) {
+      if (!sp.grid) continue;
+      const k = row[sp.level];
+      if (k == null) continue;
+      numbers[k] += sp.grid.total;
+      biomass[k] += (w.popEnergy(sp) * g) / area;
+    }
     let npp = 0;
     for (let t = 1; t < w.producers.length; t++) npp += w.pbook.npp[t];
     energy[0] = npp;

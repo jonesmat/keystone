@@ -84,7 +84,18 @@ window.Trophic = window.Trophic || {};
       if (d < bd) { bd = d; best = e; }
     }
     if (best) return { ent: best };
-    if (tx >= 0 && ty >= 0 && tx < N && ty < N) return { tile: (ty | 0) * N + (tx | 0) };
+    if (tx >= 0 && ty >= 0 && tx < N && ty < N) {
+      const i = (ty | 0) * N + (tx | 0);
+      // A Population region under the pointer: the densest species there.
+      let top = null, td = 0;
+      for (const sp of world.species) {
+        if (!sp.grid || !sp.regionMap[i]) continue;
+        const d = world.popDensity(sp, i);
+        if (d > td) { td = d; top = sp; }
+      }
+      if (top) return { region: { sp: top.idx, id: top.regionMap[i] }, tile: i };
+      return { tile: i };
+    }
     return null;
   };
 
@@ -178,6 +189,8 @@ window.Trophic = window.Trophic || {};
     ctx.fillRect(0, 0, WORLD_PX, WORLD_PX);
     if (world.marker) this._drawMarker(world.marker);
 
+    this._drawPopulations(world, tx0, ty0, tx1, ty1, tileScreen);
+
     for (const cr of world.carrion) {
       if (!cr.alive) continue;
       const x = cr.x * TP, y = cr.y * TP, s = 2 + Math.min(5, Math.sqrt(cr.E) / 6);
@@ -226,6 +239,13 @@ window.Trophic = window.Trophic || {};
       if (e.te && e.te.alive && (e.state === 'hunt' || e.state === 'fight')) this._line(ex, ey, e.te.x * TP, e.te.y * TP, 'rgba(201,72,63,0.85)');
       if (e.threat && e.threat.alive && e.state === 'flee') this._line(ex, ey, e.threat.x * TP, e.threat.y * TP, 'rgba(29,101,112,0.8)');
       if (e.state === 'graze' && e.ti >= 0) this._line(ex, ey, ((e.ti % N) + 0.5) * TP, (((e.ti / N) | 0) + 0.5) * TP, 'rgba(94,158,69,0.9)');
+    } else if (sel && sel.region) {
+      const sp = world.species[sel.region.sp];
+      if (sp && sp.regionMap) {
+        ctx.setLineDash([5 / c.zoom, 4 / c.zoom]);
+        this._regionOutline(sp.regionMap, sel.region.id, INK, 2.2 / c.zoom, tx0, ty0, tx1, ty1);
+        ctx.setLineDash([]);
+      }
     } else if (sel && sel.tile != null) {
       ctx.strokeStyle = INK; ctx.lineWidth = 2 / c.zoom;
       ctx.strokeRect((sel.tile % N) * TP, ((sel.tile / N) | 0) * TP, TP, TP);
@@ -242,6 +262,61 @@ window.Trophic = window.Trophic || {};
     }
     ctx.globalAlpha = 1;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+  };
+
+  // Populations: each region shaded by density and outlined; zoomed in, a scatter of representative icons
+  // (flavour only: individuals in a Population can't be selected).
+  Renderer.prototype._drawPopulations = function (world, x0, y0, x1, y1, tileScreen) {
+    const ctx = this.ctx, zoom = this.cam.zoom;
+    const scatter = tileScreen >= 38;
+    for (const sp of world.species) {
+      const g = sp.grid;
+      if (!g || !g.total) continue;
+      const color = T.speciesColor(sp.level, sp.hue, 0);
+      const top = Math.max(1, g.max * 0.6);
+      ctx.fillStyle = color;
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const i = y * N + x;
+        if (!sp.regionMap[i]) continue;
+        const d = g.nJ[i] + g.nA[i] + g.nO[i];
+        ctx.globalAlpha = 0.07 + 0.23 * Math.min(1, d / top);
+        ctx.fillRect(x * TP, y * TP, TP, TP);
+      }
+      ctx.globalAlpha = 0.85;
+      this._regionOutline(sp.regionMap, 0, color, 1.4 / zoom, x0, y0, x1, y1);
+      ctx.globalAlpha = 1;
+      if (scatter) {
+        const r = Math.max(2, tileScreen * 0.07) / zoom;
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const i = y * N + x, d = g.nJ[i] + g.nA[i] + g.nO[i];
+          if (d < 0.5) continue;
+          const k = Math.min(5, Math.ceil(Math.log2(1 + d)));
+          for (let m = 0; m < k; m++) {
+            const h = ((i * 2654435761 + m * 40503 + sp.idx * 97) >>> 0);
+            this._drawIcon(sp.level, (x + 0.15 + 0.7 * ((h & 255) / 255)) * TP, (y + 0.15 + 0.7 * (((h >> 8) & 255) / 255)) * TP, r, color, zoom);
+          }
+        }
+      }
+    }
+  };
+
+  // Outline the edges of a region map: every edge between a tile in a region and one outside it (id 0 = all regions).
+  Renderer.prototype._regionOutline = function (map, id, color, width, x0, y0, x1, y1) {
+    const ctx = this.ctx;
+    const inside = i => (id ? map[i] === id : map[i] > 0);
+    const same = (i, j) => (id ? map[j] === id : map[j] === map[i]);
+    ctx.strokeStyle = color; ctx.lineWidth = width;
+    ctx.beginPath();
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const i = y * N + x;
+      if (!inside(i)) continue;
+      const X = x * TP, Y = y * TP;
+      if (y === 0 || !same(i, i - N)) { ctx.moveTo(X, Y); ctx.lineTo(X + TP, Y); }
+      if (y === N - 1 || !same(i, i + N)) { ctx.moveTo(X, Y + TP); ctx.lineTo(X + TP, Y + TP); }
+      if (x === 0 || !same(i, i - 1)) { ctx.moveTo(X, Y); ctx.lineTo(X, Y + TP); }
+      if (x === N - 1 || !same(i, i + 1)) { ctx.moveTo(X + TP, Y); ctx.lineTo(X + TP, Y + TP); }
+    }
+    ctx.stroke();
   };
 
   Renderer.prototype._star = function (x, y, r) {

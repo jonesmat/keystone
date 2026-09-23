@@ -134,6 +134,7 @@ h3.h-serif { font-size: 16px; }
 .pyr-tabs { margin-top: 8px; }
 .pyr-tabs button { flex: 1; padding: 6px 4px; }
 .pyr-row .pyr-label em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--ink-3, #8C8A80); margin-left: 6px; }
+.linklike { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
 .cycles { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
 .cycles .cy-block { border-top: 1px solid var(--line); padding-top: 8px; }
 .cycles .cy-title { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 3px; }

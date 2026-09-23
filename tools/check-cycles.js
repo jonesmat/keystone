@@ -74,6 +74,8 @@ for (let s = 1; s <= opt.seeds; s++) {
   const a = world(seed), b = world(seed);
   for (const e of b.ents) if (e.alive && e.sp.level === 'decomposer') b._die(e, 'culled', -1);
   b.ents = b.ents.filter(e => e.alive);
+  // Decomposer Populations: clear every tile (their bodies go to detritus).
+  for (const sp of b.species) if (sp.grid && sp.level === 'decomposer') { for (let i = 0; i < b.N * b.N; i++) b._popClear(sp, i); b._popTotals(sp); }
   play(a, R); play(b, R);
   // Measure the round after: producer growth and plant-available soil N.
   while (!a.roundOver()) a.tick();
@@ -123,11 +125,14 @@ console.log('\nLegumes (Bloomvine fixes nitrogen)');
 }
 
 // ---------- climate trend ----------
-console.log('\nClimate trend (CO2 +' + B.climate.ppmPerRound + ' ppm per round) vs a steady climate');
+console.log('\nClimate trend (CO2 +50 ppm per round, the Warming world pace) vs a steady climate');
 {
-  const seed = T.Gen.hashSeed(5400, 1), rounds = 8;
+  // At the Warming world scenario's pace: about a doubling of CO2 over the test (+3 °C).
+  const seed = T.Gen.hashSeed(5400, 1), rounds = 8, savedPpm = B.climate.ppmPerRound;
+  B.climate.ppmPerRound = 50;
   const a = world(seed), b = world(seed, null, { climateTrend: true });
   play(a, rounds); play(b, rounds);
+  B.climate.ppmPerRound = savedPpm;
   const half = w => { let n = 0, s = 0; for (let i = 0; i < w.N * w.N; i++) { if ((i / w.N | 0) < w.N / 2) n += w.pE[i]; else s += w.pE[i]; } return { n, s }; };
   const ha = half(a), hb = half(b);
   const north = hb.n / ha.n, south = hb.s / ha.s;

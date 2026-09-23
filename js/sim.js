@@ -240,6 +240,7 @@ window.Trophic = window.Trophic || {};
     w.updateMeans();
     w.ledger.initial = w.totalPools();
     w.nledger.initial = w.totalNitrogen();
+    w.updateRegions();
     w.beginRound(1);
     return w;
   };
@@ -271,6 +272,7 @@ window.Trophic = window.Trophic || {};
     };
     this.species.push(sp);
     this.refreshSpecies(sp);
+    if (T.isPopulationSpecies(sp)) this._newGrid(sp);
     this.rstats.push(this._newRoundStats(sp));
     this.popCount.push(0);
     this.rebuildDiet();
@@ -334,6 +336,8 @@ window.Trophic = window.Trophic || {};
       }
     }
     this.edible = S.map(a => S.map(b => this._canEat(a, b)));
+    // Populations a predator can graze on (small prey it eats by the mouthful rather than chases one by one).
+    this.popPrey = S.map(a => S.filter(b => b.grid && this.edible[a.idx][b.idx]));
   };
 
   World.prototype._canEat = function (a, b) {
@@ -497,7 +501,11 @@ window.Trophic = window.Trophic || {};
       this.spawnGroup(this.player, this.player.startPop, pc);
       this.safeZone = { x: pc[0], y: pc[1], r: 16 };
     }
-    for (const sp of this.species) if (!sp.isPlayer) this.spawnGroup(sp, sp.startPop, null);
+    for (const sp of this.species) {
+      if (sp.isPlayer) continue;
+      if (sp.grid) this._seedPopulation(sp, sp.startPop);
+      else this.spawnGroup(sp, sp.startPop, null);
+    }
     this.safeZone = null;
   };
 
@@ -587,6 +595,7 @@ window.Trophic = window.Trophic || {};
     this._checkPyramid();
     if (round) this.round = round;
     this._cyclesBeginRound();
+    this._regionsBeginRound();
     this.roundTick = 0;
     this.seasonIdx = 0;
     if (this.round > 1) this.climate = clamp(this.climate + this.rng.range(-0.05, 0.05), 0.85, 1.15);
@@ -639,6 +648,7 @@ window.Trophic = window.Trophic || {};
     const S = this.species.length;
     const count = new Array(S).fill(0), energy = new Array(S).fill(0);
     for (const e of this.ents) if (e.alive) { count[e.sp.idx]++; energy[e.sp.idx] += e.E + e.tissue; }
+    for (const sp of this.species) if (sp.grid) { count[sp.idx] += Math.round(sp.grid.total); energy[sp.idx] += this.popEnergy(sp); }
     return { count, energy };
   };
 
@@ -776,6 +786,7 @@ window.Trophic = window.Trophic || {};
       const cx = clamp((e.x / CELL) | 0, 0, CN - 1), cy = clamp((e.y / CELL) | 0, 0, CN - 1);
       this.cells[cy * CN + cx].push(e);
     }
+    for (const sp of this.species) if (sp.grid) pc[sp.idx] += Math.round(sp.grid.total);
   };
 
   World.prototype.query = function (x, y, r, fn) {
@@ -821,6 +832,7 @@ window.Trophic = window.Trophic || {};
     for (let k = 0; k < n0; k++) if (ents[k].alive) this._reproduce(ents[k]);
     this._decay();
     this._cyclesTick();
+    if (this.t % B.populations.update === 0) this._updatePopulations();
     this._groundwater();
 
     if (this.ents.some(e => !e.alive)) this.ents = this.ents.filter(e => e.alive);
@@ -1200,7 +1212,29 @@ window.Trophic = window.Trophic || {};
       });
     }
 
+    // --- Populations (swarms, schools of small prey, soil fauna): graze them where they're densest ---
+    let bestPop = -1;
+    const popPrey = this.popPrey && this.popPrey[sp.idx];
+    if (st.canMeat && popPrey && popPrey.length) {
+      const r = Math.min(8, Math.ceil(sight)), cx = e.x | 0, cy = e.y | 0;
+      for (const b of popPrey) {
+        const rarity = B.preyRarity > 0 ? b.grid.total / (b.grid.total + B.preyRarity) : 1;
+        for (let k = 0; k < 14; k++) {
+          const x = cx + Math.round(rng.range(-r, r)), y = cy + Math.round(rng.range(-r, r));
+          if (x < 0 || y < 0 || x >= N || y >= N) continue;
+          const i = y * N + x;
+          if (st.swim && this.terrain[i] !== 1) continue;
+          const food = this.popFoodAt(b, i);
+          if (food < 5) continue;
+          const d = Math.hypot(x + 0.5 - e.x, y + 0.5 - e.y);
+          const s = (Math.min(food, st.eatRate * 15) * st.meatA * st.P * rarity * foodMult * terrPen(x, y)) / (1 + d * 0.25);
+          if (s > best) { best = s; bestKind = 4; bestTile = i; bestPop = b.idx; }
+        }
+      }
+    }
+
     if (bestKind === 1) { e.state = 'graze'; e.tk = 1; e.ti = bestTile; e.food = bestFood; }
+    else if (bestKind === 4) { e.state = 'graze'; e.tk = 2; e.ti = bestTile; e.food = 'pop'; e.popSp = bestPop; }
     else if (bestKind === 3) { e.state = 'scavenge'; e.tk = 3; e.tc = bestCarr; }
     else if (bestKind === 2) { if (e.te !== bestEnt) e.chase = 0; e.state = 'hunt'; e.tk = 2; e.te = bestEnt; }
     else this._wander(e);
@@ -1218,6 +1252,7 @@ window.Trophic = window.Trophic || {};
     if (i < 0) return 0;
     if (e.food === 'detr') return this.detr[i];
     if (e.food === 'fruit') return this.fruit[i];
+    if (e.food === 'pop') return this.popFoodAt(this.species[e.popSp], i);
     return this.ptype[i] ? this.pE[i] - this.producers[this.ptype[i]].max * B.grazeFloor : 0;
   };
 
@@ -1333,6 +1368,13 @@ window.Trophic = window.Trophic || {};
         if (Math.hypot(cx - e.x, cy - e.y) > 0.45) return;
         const room = st.maxE - e.E;
         if (room < 1) { e.state = 'rest'; e.think = 0; return; }
+        if (e.food === 'pop') {
+          const prey = this.species[e.popSp], A = st.meatA;
+          const got = this._eatPopulation(e, prey, i, Math.min(st.eatRate * (st.ecto ? this.ectoPerf : 1), room / (A * st.P)));
+          if (got.amt <= 0.05) { e.think = 0; return; }
+          this._digest(e, got.amt, A, st.P, prey.name, i, prey.level, got.nIn);
+          break;
+        }
         if (e.food === 'detr') {
           const A = B.decomposerA, P = B.decomposerP;
           const amt = Math.min(st.eatRate * (st.ecto ? this.ectoPerf : 1), this.detr[i], room / (A * P));
@@ -1626,6 +1668,7 @@ window.Trophic = window.Trophic || {};
     for (let i = 0; i < NT; i++) s += this.pE[i] + this.fruit[i] + this.detr[i] + this.peat[i];
     for (const e of this.ents) if (e.alive) s += e.E + e.tissue;
     for (const c of this.carrion) if (c.alive) s += c.E;
+    for (const sp of this.species) if (sp.grid) s += this.popEnergy(sp);
     return s;
   };
 
@@ -1655,6 +1698,20 @@ window.Trophic = window.Trophic || {};
     let bi = -1, bn = 0;
     this.species.forEach((s, i) => { if (!s.transient && pops[i] > bn) { bn = pops[i]; bi = i; } });
     if (bi < 0) return null;
+    const psp = this.species[bi];
+    if (psp.grid) {
+      // A Population loses 30% everywhere; the bodies go to detritus.
+      const g = psp.grid, before = g.total;
+      for (let i = 0; i < N * N; i++) {
+        if (g.nJ[i] + g.nA[i] + g.nO[i] <= 0) continue;
+        this._popBodiesToDetritus(psp, i, 0.3);
+        g.nJ[i] *= 0.7; g.nA[i] *= 0.7; g.nO[i] *= 0.7;
+      }
+      this._popTotals(psp);
+      const killed = Math.round(before) - Math.round(g.total);   // matches the rounded counts players see
+      this.rstats[bi].deaths.plague = (this.rstats[bi].deaths.plague || 0) + killed;
+      return { species: psp, killed };
+    }
     const victims = this.ents.filter(e => e.alive && e.sp.idx === bi);
     const kill = Math.round(victims.length * 0.3);
     for (let k = 0; k < kill; k++) {
@@ -1696,6 +1753,7 @@ window.Trophic = window.Trophic || {};
       ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, e.iso, r2(e.tissue), r3(e.nT), r3(e.nS)]),
       carrion: this.carrion.filter(c => c.alive).map(c => [r2(c.x), r2(c.y), r2(c.E), c.src, c.lv, r3(c.N)]),
       cycles: this._cyclesState(),
+      populations: Object.fromEntries(this.species.filter(sp => sp.grid).map(sp => [sp.idx, this._popState(sp)])),
     };
   };
 
@@ -1729,6 +1787,8 @@ window.Trophic = window.Trophic || {};
       e.hp = a[4]; e.breedCd = a[5]; e.home = a[6]; e.age = a[8]; e.life = a[9]; e.num = a[10]; e.offspring = a[11];
     });
     for (const c of s.carrion) w.carrion.push({ id: w.nextId++, x: c[0], y: c[1], E: c[2], src: c[3], lv: c[4], N: c[5] != null ? c[5] : c[2] * 0.2 * B.nitrogen.animal, alive: true });
+    if (s.populations) for (const k in s.populations) { const sp = w.species[+k]; if (sp) w._popRestore(sp, s.populations[k]); }
+    w.updateRegions();
     if (w.decompRef == null) w.decompRef = w.species.filter(sp => sp.level === 'decomposer').reduce((a, sp) => a + (sp.initialPop || 0), 0);
     w.updateMeans();
     w.ledger.initial = w.totalPools();

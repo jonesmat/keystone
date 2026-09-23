@@ -77,7 +77,7 @@ window.Trophic = window.Trophic || {};
       behavior: 'Apex, territorial; 2–4 individuals.', weakness: 'Very high upkeep; starves fast.' },
     { id: 'rotmite', name: 'Rotmite', level: 'decomposer', archetype: 'detritivore', startPop: 40,
       base: { speed: 0.06, sight: 3 }, eats: ['detritus', 'carrion'],
-      genome: { size: 0.5, diet: 5, repro: 6, metabolism: 'ecto', limbs: 6, longevity: 3 }, flags: { decomposer: true, asexual: true },
+      genome: { size: 0.5, diet: 5, repro: 6, metabolism: 'ecto', limbs: 6, longevity: 3 }, flags: { decomposer: true, asexual: true, population: true },
       behavior: 'Returns nutrients to soil.', weakness: 'Not a rival; killing them hurts producers.' },
   ];
 
@@ -95,11 +95,11 @@ window.Trophic = window.Trophic || {};
   T.CHANNEL_SPECIES = [
     { id: 'driftling', name: 'Driftling', level: 'herbivore', archetype: 'filter-feeder', startPop: 450, herdSize: [15, 30],
       base: { speed: 0.07, sight: 3 }, eats: ['drift'],
-      genome: { size: 0.3, diet: 0, repro: 0, metabolism: 'ecto', limbs: 6, longevity: 2, tail: 0, roam: 4, cohesion: 0.4 }, flags: { swim: true, filter: true },
+      genome: { size: 0.3, diet: 0, repro: 0, metabolism: 'ecto', limbs: 6, longevity: 2, tail: 0, roam: 4, cohesion: 0.4 }, flags: { swim: true, filter: true, population: true },
       behavior: 'Drifting swarms that strain phytoplankton from the water.', weakness: 'Tiny and defenceless; everything eats them.' },
     { id: 'glassclam', name: 'Glassclam', level: 'herbivore', archetype: 'filter-feeder', startPop: 90,
       base: { speed: 0.02, sight: 2 }, eats: ['drift'],
-      genome: { size: 1.2, diet: 0, repro: 4, armor: 3, metabolism: 'ecto', limbs: 2, longevity: 4, tail: 0, roam: 1 }, flags: { swim: true, filter: true },
+      genome: { size: 1.2, diet: 0, repro: 4, armor: 3, metabolism: 'ecto', limbs: 2, longevity: 4, tail: 0, roam: 1 }, flags: { swim: true, filter: true, population: true },
       behavior: 'Barely moves; filters whatever the current brings.', weakness: 'Cannot flee.' },
     { id: 'tidecrab', name: 'Tidecrab', level: 'omnivore', archetype: 'scavenger', startPop: 30,
       base: { speed: 0.08, sight: 4 }, eats: ['eelgrass', 'drift', 'carrion'],
@@ -119,7 +119,7 @@ window.Trophic = window.Trophic || {};
       behavior: 'Apex swimmer; a thick blubber layer holds its warmth.', weakness: 'Needs many fish.' },
     { id: 'siltworm', name: 'Siltworm', level: 'decomposer', archetype: 'detritivore', startPop: 60,
       base: { speed: 0.05, sight: 3 }, eats: ['detritus', 'carrion'],
-      genome: { size: 0.4, diet: 5, repro: 5, metabolism: 'ecto', limbs: 0, longevity: 3 }, flags: { decomposer: true, asexual: true, swim: true },
+      genome: { size: 0.4, diet: 5, repro: 5, metabolism: 'ecto', limbs: 0, longevity: 3 }, flags: { decomposer: true, asexual: true, swim: true, population: true },
       behavior: 'Works through sinking detritus on the sea floor.', weakness: 'Not a rival; killing them starves the plankton.' },
   ];
 
