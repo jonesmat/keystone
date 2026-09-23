@@ -70,6 +70,13 @@ window.Trophic = window.Trophic || {};
     document.querySelectorAll('[data-menu]').forEach(b => b.addEventListener('click', () => G.openMenu()));
     document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => G.openOverlay(b.dataset.open)));
     document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => G.closeOverlay()));
+    $('pyr-tabs').addEventListener('click', ev => {
+      const b = ev.target.closest('button[data-kind]');
+      if (!b) return;
+      UI.pyrKind = b.dataset.kind;
+      UI.pyrAt = 0;
+      UI.updatePyramid();
+    });
     $('btn-toggle-left').addEventListener('click', () => { $('panel-left').classList.toggle('open'); $('panel-right').classList.remove('open'); });
     $('btn-toggle-right').addEventListener('click', () => { $('panel-right').classList.toggle('open'); $('panel-left').classList.remove('open'); });
     $('btn-marker').addEventListener('click', () => G.togglePlacing());
@@ -160,7 +167,7 @@ window.Trophic = window.Trophic || {};
   UI.updateHUD = function () {
     const w = G.world, run = G.run, p = w.player;
     if (!p) return;
-    $('tb-biome').textContent = run.mode === 'generated' ? 'Generated · ' + B.biomes[run.biome].name : 'Temperate Meadow';
+    $('tb-biome').textContent = run.mode === 'generated' ? 'Generated · ' + B.biomes[run.biome].name : run.mode === 'channel' ? 'Open Channel' : 'Temperate Meadow';
     $('tb-round').textContent = 'Round ' + run.round;
     $('tb-of').textContent = 'of ' + B.maxRounds + ' · Simulate';
     // season bar
@@ -202,29 +209,68 @@ window.Trophic = window.Trophic || {};
     }
   };
 
+  // Pyramids of numbers, biomass and energy (textbook levels, top row first). Numbers and biomass may invert;
+  // energy always narrows. Bars use a log scale because the levels span several orders of magnitude.
+  UI.pyrKind = 'energy';
+  UI.pyrAt = 0;
+  const PYR_CAPTION = {
+    numbers: 'Individuals at each level right now',
+    biomass: 'Standing crop at each level right now, g/m²',
+    energy: 'Energy fixed at each level this round',
+  };
   UI.updatePyramid = function () {
     const w = G.world, p = w.player;
     const box = $('pyramid');
-    const order = ['carnivore2', 'carnivore1', 'omnivore', 'herbivore', 'producer'];
+    const now = performance.now();
+    if (box.children.length && now - UI.pyrAt < 500) return;   // recount twice a second, not every frame
+    UI.pyrAt = now;
+    const levels = T.Energy.PYRAMID_LEVELS;
     if (!box.children.length) {
-      for (const lv of order) {
-        box.append(el('div', { class: 'pyr-row', 'data-lv': lv },
-          el('div', { class: 'pyr-label' }, el('span', { text: T.LEVELS[lv].name }), el('b')),
-          el('div', { class: 'pyr-bar', style: { background: T.LEVELS[lv].color } }, el('i', { class: 'you' }))));
+      for (let k = levels.length - 1; k >= 0; k--) {
+        const L = levels[k];
+        box.append(el('div', { class: 'pyr-row', 'data-k': k },
+          el('div', { class: 'pyr-label' }, el('span', { text: L.name }), el('span', null, el('b'), el('em'))),
+          el('div', { class: 'pyr-bar', style: { background: T.LEVELS[L.key].color } }, el('i', { class: 'you' }))));
       }
     }
-    const pyr = w.pyramid();
-    const flow = w.flow;
-    const maxV = Math.max(1, flow.producer);
-    for (const row of box.children) {
-      const lv = row.dataset.lv;
-      const v = flow[lv];
-      row.querySelector('.pyr-bar').style.width = (v > 0.01 ? 6 + 94 * Math.pow(Math.min(1, v / maxV), 0.32) : 0) + '%';
-      const share = pyr.levels[lv] > 0 ? pyr.player[lv] / pyr.levels[lv] : 0;
-      row.querySelector('.you').style.width = share * 100 + '%';
-      row.querySelector('b').textContent = (v >= 10 ? fmt(v) : v.toFixed(1)) + ' EU/t';
-      row.classList.toggle('player', lv === p.level);
+    const kind = UI.pyrKind;
+    document.querySelectorAll('#pyr-tabs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.kind === kind)));
+    $('pyr-caption').textContent = PYR_CAPTION[kind];
+    const pd = T.Energy.pyramids(w);
+    const vals = pd[kind];
+    const logMax = Math.log10(1 + Math.max(1, ...vals));
+    // The player's share of their row: individuals, standing crop, or energy assimilated this round.
+    const pk = levels.findIndex(L => L.levels.includes(p.level));
+    let mine = 0;
+    if (kind === 'energy') {
+      let rowAs = 0;
+      w.species.forEach((sp, i) => { if (levels[pk].levels.includes(sp.level)) rowAs += w.rstats[i].assimilated; });
+      mine = rowAs > 0 ? w.rstats[p.idx].assimilated / rowAs : 0;
+    } else {
+      let n = 0, b = 0, rn = 0, rb = 0;
+      for (const e of w.ents) {
+        if (!e.alive || !levels[pk].levels.includes(e.sp.level)) continue;
+        rn++; rb += e.E + e.tissue;
+        if (e.sp === p) { n++; b += e.E + e.tissue; }
+      }
+      mine = kind === 'numbers' ? (rn ? n / rn : 0) : rb ? b / rb : 0;
     }
+    for (const row of box.children) {
+      const k = +row.dataset.k, v = vals[k];
+      row.querySelector('.pyr-bar').style.width = (v > 0 ? 6 + 94 * (Math.log10(1 + v) / logMax) : 0) + '%';
+      row.querySelector('.you').style.width = (k === pk ? mine * 100 : 0) + '%';
+      const text = kind === 'biomass' ? (v >= 10 ? fmt(v) : v.toFixed(v >= 1 ? 1 : 2)) + ' g/m²' : kind === 'energy' ? fmt(v) + ' EU' : v >= 10 ? fmt(v) : v.toFixed(v > 0 ? 2 : 0);
+      row.querySelector('b').textContent = text;
+      // Energy: the share passed up from the level below (the 10% rule).
+      row.querySelector('em').textContent = kind === 'energy' && k > 0 && vals[k - 1] > 0 && v > 0 ? '▲ ' + (v / vals[k - 1] >= 0.01 ? pct(v / vals[k - 1]) : '<1%') : '';
+      row.classList.toggle('player', k === pk);
+    }
+    const note = kind === 'energy'
+      ? (pd.violations.length ? 'Energy failed to narrow at ' + pd.violations.map(k => levels[k].name.toLowerCase()).join(', ') + ' this round.' : null)
+      : T.Energy.inversionNote(pd, kind);
+    $('pyr-note').hidden = !note;
+    $('pyr-note').textContent = note || '';
+    const pyr = w.pyramid();
     const share = pyr.levels[p.level] > 0 ? pyr.player[p.level] / pyr.levels[p.level] : 0;
     $('share-note').textContent = 'Your share of ' + T.LEVELS[p.level].name.toLowerCase() + ': ' + pct(share) + ' (need ' + pct(B.dominanceShare) + ')';
     $('sun-note').textContent = 'Sunlight captured this tick: ' + fmt(w.capturedTick) + ' EU';

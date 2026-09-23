@@ -28,15 +28,21 @@
         <button data-speed="0" title="Pause (Space)" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="3.5" height="10" rx="1"/><rect x="9.5" y="3" width="3.5" height="10" rx="1"/></svg></button>
         <button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
       </div>
-      <button class="icon-btn only-narrow" id="btn-toggle-left" title="Energy pyramid" aria-label="Energy pyramid">△</button>
+      <button class="icon-btn only-narrow" id="btn-toggle-left" title="Pyramids" aria-label="Pyramids">△</button>
       <button class="icon-btn only-narrow" id="btn-toggle-right" title="Your species" aria-label="Your species">●</button>
       <button class="icon-btn" data-menu title="Menu (Esc)" aria-label="Menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></button>
     </header>
 
     <aside class="side side-left" id="panel-left">
-      <h3 class="h-serif">Energy pyramid</h3>
-      <p class="caption">Stored energy flowing into each level, per tick</p>
+      <h3 class="h-serif">Pyramids</h3>
+      <div class="seg-small pyr-tabs" id="pyr-tabs" role="group" aria-label="Pyramid">
+        <button type="button" data-kind="numbers" aria-pressed="false">Numbers</button>
+        <button type="button" data-kind="biomass" aria-pressed="false">Biomass</button>
+        <button type="button" data-kind="energy" aria-pressed="true">Energy</button>
+      </div>
+      <p class="caption" id="pyr-caption">Energy fixed at each level this round</p>
       <div id="pyramid" class="pyramid"></div>
+      <p class="pyr-note" id="pyr-note" hidden></p>
       <p class="share-note" id="share-note"></p>
       <p class="sun-note" id="sun-note"></p>
       <div class="legend" id="level-legend"></div>
@@ -92,6 +98,7 @@
       <div class="bar-spacer"></div>
       <div class="tabs" role="tablist" id="mode-tabs">
         <button role="tab" data-mode="meadow">Temperate Meadow</button>
+        <button role="tab" data-mode="channel">Open Channel</button>
         <button role="tab" data-mode="generated">Generated world</button>
         <button role="tab" data-mode="sandbox" disabled title="Sandbox arrives in a later update">Sandbox</button>
       </div>

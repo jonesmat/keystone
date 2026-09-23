@@ -42,7 +42,7 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `js/genes.js` | Gene schema (range, step, MP cost, upkeep), genome helpers, base64 packing for saves |
 | `js/data.js` | Trophic levels, the hand-authored Meadow roster, templates, directives, events, tutorial, Codex ecology notes |
 | `js/sim.js` | Fixed-step simulation (10 ticks/s): per-individual stats, juveniles, aging, mate-finding, behaviour genes, producer tile genes, microhabitats, energy ledger, save v2 plus v1 migration. Phase 3: GPP/NPP booking per producer, litterfall, upkeep-only metabolism with thermoregulation, body tissue, ectotherm temperature response |
-| `js/energy.js` | Phase 3 energy chain: measures each round's GPP, NPP, harvesting, assimilation, tissue growth and energy passed up per level, with the textbook ranges and each mode's target bands |
+| `js/energy.js` | Phase 3 energy chain: measures each round's GPP, NPP, harvesting, assimilation, tissue growth and energy passed up per level, with the textbook ranges and each mode's target bands. Also the three pyramids (numbers, biomass, energy) and the notes that explain an inversion |
 | `js/evolution.js` | Inheritance and mutation, 2-means speciation, lineage splits, "What evolved" attribution, mutant detection, guided mutation and pressure |
 | `js/generator.js` | Archetypes, niche slots, genome sampling with quirks, food webs, names and colours, founder rolls, stability test |
 | `js/sprites.js` | Side-view creature art built from genes (limbs, tail, head, coat, armour, spines, wings, jaws) |
@@ -53,6 +53,7 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `tools/headless.js` | Run one world in Node: `node tools/headless.js grazer 10 12345 [meadow\|generated]` |
 | `tools/sweep.js` | Seed sweep against the Phase 2 balance targets: `node tools/sweep.js --seeds 20 --rounds 30 [--mode generated] [--set key=value] [--csv out.csv]` |
 | `tools/check-events.js` | Smoke tests: inheritance, events, speciation, save round-trip, v1 migration, generator rules |
+| `tools/check-pyramids.js` | Phase 3 pyramid checks: in Temperate Meadow and Open Channel the energy pyramid must narrow every round; numbers and biomass are checked against the design's validation table: `node tools/check-pyramids.js [--seeds 3] [--rounds 8]` |
 | `tools/check-energy.js` | Phase 3 energy checks: the textbook's 100,000-unit example must come back within ±10%, then hands-off worlds are measured against each mode's bands: `node tools/check-energy.js [--seeds 3] [--rounds 8] [--mode game\|realism\|both] [--legacy] [--set key=value]` |
 
 ## Where it deviates from the Phase 2 design
@@ -94,6 +95,17 @@ Last `check-energy.js` run, 5 seeds × 10 rounds, hands-off Meadow:
 | Tissue growth, endotherm | 6–10% | 12% | 6–12% |
 | Passed up, NPP → herbivores | 18–24% | 8.5% | 8–15% |
 | Passed up, herbivores → carnivores | about 1% | 4% | 8–15% |
+
+**P3-M2 Three pyramids: built.**
+
+- **Pyramid panel** (World view, left): Numbers · Biomass · Energy tabs over the textbook's four levels, where omnivores count with the herbivores. Bars use a log scale. Numbers and biomass can invert, and a note explains why; energy shows the share passed up from each level below.
+- **Plant counts:** each producer kind holds a number of individual plants per tile, from 5,000 phytoplankton cells down to a quarter of a tree, so plants can be counted next to animals.
+- **Biomass** is standing crop in g/m², treating a tile as a 1 m² sample plot at 1 g per EU.
+- **Energy fixed per level** follows Lindeman's trophic positions: a species' assimilation counts at the level above its food, so an apex predator eating herbivores fixes that energy at level 3. Carcasses from starvation, old age or disease feed the detrital chain rather than passing energy up, because only kills move energy up the grazing chain.
+- **Energy-pyramid assertion:** every world checks at the end of each round that energy narrows at every level. It warns in debug builds and records the result on `world.lastPyramids`.
+- **Open Channel** (New world tab): 90% open water around a few islands, and a new phytoplankton producer kind (30 EU max, regrows in about a second). Swimmers move only in water; filter-feeders strain plankton from whatever tile they drift through. The hand-authored roster: Driftbloom and Eelgrass; Driftling and Glassclam (filter-feeders); Tidecrab; Silverfin and Skimgull; Greyseal; Siltworm. The player's lineage swims there, and a plant-eater filter-feeds. The default founder switches to the Opportunist, because a warm-blooded Grazer can't stay warm on filtered plankton.
+
+Last `check-pyramids.js` run, 4 seeds × 8 rounds: energy narrowed in every round of both worlds. The Meadow was upright on numbers and biomass in 100% of rounds; the Open Channel's biomass was inverted (grazers outweigh phytoplankton) in 89%. The Open Channel's predators still boom and bust: Greyseals usually die out, and Silverfin do in some seeds.
 
 Predators last longer than in Phase 2: with a Grazer player, apex predators now survive all 10 test rounds, and primary carnivores mostly do. **Realism mode isn't balanced yet:** endotherms and predators die out within 10 rounds.
 

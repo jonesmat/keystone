@@ -69,6 +69,11 @@ window.Trophic = window.Trophic || {};
     if (m === 'sandbox') return;
     G.setup.mode = m;
     if (m === 'generated') G.regenerate();
+    else if (m === 'channel') {
+      G.cancelGen(); G.setup.roster = T.Gen.channelRoster(); G.setup.biome = 'channel'; G.setup.stability = { state: 'idle' };
+      // A warm-blooded grazer can't strain enough plankton to stay warm in open water; start from a mixed diet.
+      if (G.setup.ftab === 'templates' && G.setup.templateId === 'grazer') G.setup.templateId = 'opportunist';
+    }
     else { G.cancelGen(); G.setup.roster = T.Gen.meadowRoster(); G.setup.biome = 'meadow'; G.setup.stability = { state: 'idle' }; }
     G.renderNewWorld();
   };
@@ -155,7 +160,7 @@ window.Trophic = window.Trophic || {};
     const founder = clone(Object.assign({}, G.currentFounder(), { genome: null }));
     founder.genome = new Float32Array(G.currentFounder().genome);
     const seed = st.mode === 'generated' ? st.worldSeed || st.seed : st.seed;
-    const biome = B.biomes[st.mode === 'generated' ? st.biome : 'meadow'];
+    const biome = B.biomes[st.mode === 'generated' ? st.biome : st.mode === 'channel' ? 'channel' : 'meadow'];
     const world = T.createWorld({ seed, roster: st.roster, player: founder, biome, difficulty: diff, debug: G.settings.debug });
     G.world = world;
     let mp = diff.startMP;

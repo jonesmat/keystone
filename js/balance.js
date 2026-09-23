@@ -181,7 +181,14 @@ Trophic.BALANCE = {
     meadow:  { id: 'meadow',  name: 'Meadow',  light: 1.0, water: 0.09, winter: 0.50, tMean: 10, tAmp: 12 },
     wetland: { id: 'wetland', name: 'Wetland', light: 1.1, water: 0.22, winter: 0.55, tMean: 12, tAmp: 10 },
     taiga:   { id: 'taiga',   name: 'Taiga',   light: 0.7, water: 0.07, winter: 0.35, tMean: -2, tAmp: 16 },
+    // Mostly open water around a few islands; the sea keeps temperatures mild.
+    channel: { id: 'channel', name: 'Open Channel', light: 1.0, water: 0.9, winter: 0.60, tMean: 12, tAmp: 5, aquatic: true },
   },
+
+  // Pyramids (Phase 3). Standing crop is shown as g/m² by treating a tile as a 1 m² sample plot of its ground
+  // or water, at 1 g dry weight per EU. Plant counts come from T.PRODUCER_KINDS[kind].perTile.
+  gramsPerEU: 1,
+  plantFullAt: 0.5,         // a tile holds its full count of plants once standing crop reaches this share of max
 
   difficulties: {
     seedling: { name: 'Seedling', npcMu: 0.7, response: 0.5, startMP: 25, scoreMult: 0.75 },

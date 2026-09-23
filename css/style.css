@@ -131,6 +131,10 @@ h3.h-serif { font-size: 16px; }
 #world.dragging { cursor: grabbing; }
 #world.placing { cursor: crosshair; }
 .pyramid { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.pyr-tabs { margin-top: 8px; }
+.pyr-tabs button { flex: 1; padding: 6px 4px; }
+.pyr-row .pyr-label em { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--ink-3, #8C8A80); margin-left: 6px; }
+.pyr-note { font-size: 12px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 10px 0 0; }
 .pyr-row .pyr-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); margin-bottom: 3px; }
 .pyr-row .pyr-label b { font-family: var(--mono); font-weight: 500; color: var(--ink); }
 .pyr-bar { position: relative; height: 22px; margin: 0 auto; border-radius: 4px; transition: width 0.4s ease; min-width: 8px; overflow: hidden; }

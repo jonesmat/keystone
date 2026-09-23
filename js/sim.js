@@ -101,6 +101,8 @@ window.Trophic = window.Trophic || {};
       ambush: g[G.ambush], burrow: g[G.burrow], charge: g[G.charge],
       lifeTicks: g[G.longevity] * B.roundTicks * B.lifespanMult,
       tissueAdult: legacy ? 0 : B.tissuePerMass * Math.max(0.1, g[G.size]),
+      // Swimmers move in water only; filter-feeders strain plankton from whatever tile they drift through.
+      swim: !!(sp.flags && sp.flags.swim), filter: !!(sp.flags && sp.flags.filter),
     };
   };
 
@@ -216,6 +218,12 @@ window.Trophic = window.Trophic || {};
   // opts: { seed, roster: {producers, species}, player: def|null, biome, difficulty, debug }
   T.createWorld = function (opts) {
     const w = new World(opts);
+    // In an aquatic world the player's lineage swims, and a plant-eating one strains plankton like the natives.
+    if (opts.player && w.biome.aquatic) {
+      const flags = Object.assign({}, opts.player.flags, { swim: true });
+      if ((opts.player.level || 'herbivore') === 'herbivore') flags.filter = true;
+      opts = Object.assign({}, opts, { player: Object.assign({}, opts.player, { flags }) });
+    }
     const diff = opts.difficulty || B.difficulties.standard;
     w.setProducers(opts.roster.producers);
     w._generateTerrain();
@@ -402,13 +410,16 @@ window.Trophic = window.Trophic || {};
       }
       return false;
     };
-    const ground = byKind.ground ? 'ground' : Object.keys(byKind).find(k => k !== 'aquatic') || 'ground';
+    const ground = byKind.ground ? 'ground' : Object.keys(byKind).find(k => k !== 'aquatic' && k !== 'plankton') || 'ground';
+    const shallowLine = waterLine - 0.04;
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const i = y * N + x, m = this.moist[i];
       this.nutr[i] = clamp(B.nutrientStart + rng.range(-0.15, 0.15), 0.2, 1);
       let P = null;
       if (this.terrain[i] === 1) {
-        if (byKind.aquatic && rng.chance(0.8)) P = choose('aquatic', m);
+        // Phytoplankton fills open water; rooted aquatic mats keep the shallows.
+        if (byKind.plankton && !(byKind.aquatic && this.elev[i] > shallowLine)) P = choose('plankton', m);
+        else if (byKind.aquatic && rng.chance(0.8)) P = choose('aquatic', m);
       } else {
         let kind = ground;
         if (byKind.woody && nWood(x, y) > 0.66) kind = 'woody';
@@ -459,17 +470,19 @@ window.Trophic = window.Trophic || {};
     return (P.height || 0) >= 2 && this.pE[i] > P.max * 0.3;
   };
 
-  World.prototype._randomLand = function (cx, cy, r) {
+  // A random point near (cx, cy): on land, or in water when wantWater is set (swimmers).
+  World.prototype._randomLand = function (cx, cy, r, wantWater) {
+    const want = !!wantWater;
     for (let k = 0; k < 30; k++) {
       const x = clamp(cx + this.rng.range(-r, r), 0.5, N - 0.5), y = clamp(cy + this.rng.range(-r, r), 0.5, N - 0.5);
-      if (!this.isWater(x, y)) return [x, y];
+      if (this.isWater(x, y) === want) return [x, y];
     }
     return [clamp(cx, 0.5, N - 0.5), clamp(cy, 0.5, N - 0.5)];
   };
 
   World.prototype._populate = function () {
     if (this.player) {
-      const pc = this._randomLand(N / 2, N / 2, N / 2 - 10);
+      const pc = this._randomLand(N / 2, N / 2, N / 2 - 10, this.player.stats.swim);
       this.spawnGroup(this.player, this.player.startPop, pc);
       this.safeZone = { x: pc[0], y: pc[1], r: 16 };
     }
@@ -488,13 +501,14 @@ window.Trophic = window.Trophic || {};
       if (sp.herdSize) size = Math.min(left, sp.herdSize[0] + rng.int(sp.herdSize[1] - sp.herdSize[0] + 1));
       else if (sp.isPlayer) size = Math.min(left, Math.max(3, Math.ceil(count / 2)));
       else size = Math.min(left, 1 + rng.int(3));
-      let c = center ? this._randomLand(center[0], center[1], 3) : this._randomLand(N / 2, N / 2, N / 2 - 2);
+      const wet = sp.stats.swim;
+      let c = center ? this._randomLand(center[0], center[1], 3, wet) : this._randomLand(N / 2, N / 2, N / 2 - 2, wet);
       const sz = this.safeZone;
       if (sz && sp.stats.canMeat && sp.level !== 'decomposer') {
-        for (let k = 0; k < 20 && Math.hypot(c[0] - sz.x, c[1] - sz.y) < sz.r; k++) c = this._randomLand(N / 2, N / 2, N / 2 - 2);
+        for (let k = 0; k < 20 && Math.hypot(c[0] - sz.x, c[1] - sz.y) < sz.r; k++) c = this._randomLand(N / 2, N / 2, N / 2 - 2, wet);
       }
       for (let k = 0; k < size; k++) {
-        const p = this._randomLand(c[0], c[1], 2);
+        const p = this._randomLand(c[0], c[1], 2, wet);
         const g = T.sampleGenome(sp.genome, rng, B.founderSigma);
         const e = this.spawn(sp, p[0], p[1], 0, g, { grow: 1 });
         e.E = e.st.maxE * (opts.energy || rng.range(0.5, 0.75));
@@ -550,13 +564,14 @@ window.Trophic = window.Trophic || {};
     return {
       // eaten: by food name; eatenLv: by the trophic level it came from ('producer', a consumer level, 'detritus').
       // upkeepHeat is all metabolic respiration (thermoHeat is the thermoregulation share of it).
-      eaten: {}, eatenLv: {}, ingested: 0, assimilated: 0, gain: 0, digestHeat: 0, excreted: 0, upkeepHeat: 0, thermoHeat: 0,
+      eaten: {}, eatenLv: {}, assimLv: {}, ingested: 0, assimilated: 0, gain: 0, digestHeat: 0, excreted: 0, upkeepHeat: 0, thermoHeat: 0,
       predLoss: 0, starveLoss: 0, otherLoss: 0, births: 0, deaths: {}, kills: {},
       startPop: 0, startE: 0, birthMids: [],
     };
   };
 
   World.prototype.beginRound = function (round) {
+    this._checkPyramid();
     if (round) this.round = round;
     this.roundTick = 0;
     this.seasonIdx = 0;
@@ -578,6 +593,18 @@ window.Trophic = window.Trophic || {};
     this._recordHistory();
   };
 
+  // End-of-round assertion (every biome): energy fixed at each level must be below the level beneath it.
+  // Numbers and biomass may invert and are only reported. The result stays on the world for the report and tools.
+  World.prototype._checkPyramid = function () {
+    if (!T.Energy || !this.pbook || !this.rstats.length) return;
+    const p = T.Energy.pyramids(this);
+    this.lastPyramids = p;
+    if (p.violations.length) {
+      this.pyramidViolations = (this.pyramidViolations || 0) + 1;
+      if (this.debug) console.warn('[pyramid] energy did not narrow at ' + p.violations.map(k => p.levels[k].name).join(', ') + ' in round ' + this.round, p.energy);
+    }
+  };
+
   World.prototype.roundOver = function () { return this.roundTick >= B.roundTicks; };
 
   World.prototype.countPops = function () {
@@ -591,6 +618,21 @@ window.Trophic = window.Trophic || {};
     let s = 0;
     for (let i = 0; i < NT; i++) s += this.pE[i] + this.fruit[i];
     return s;
+  };
+
+  // Individual plants on the map: each tile holds its kind's perTile count once its standing crop reaches
+  // plantFullAt of the producer's max, fewer when grazed down (the numbers pyramid's bottom row).
+  World.prototype.plantCount = function () {
+    const full = B.plantFullAt;
+    let n = 0;
+    for (let i = 0; i < NT; i++) {
+      const t = this.ptype[i];
+      if (!t) continue;
+      const P = this.producers[t];
+      const kind = T.PRODUCER_KINDS[P.kind];
+      n += (kind ? kind.perTile : 1) * Math.min(1, this.pE[i] / (full * P.max));
+    }
+    return n;
   };
 
   // Mean tile genes and biomass per producer type.
@@ -980,6 +1022,18 @@ window.Trophic = window.Trophic || {};
     }
     if (hunger < 0.08 && dir !== 'hunt') { this._wander(e); return; }
 
+    // Filter-feeders don't hunt for food patches: they drift and strain whatever plankton the tile holds.
+    if (st.filter) {
+      const here = this.tileAt(e.x, e.y), pt = this.ptype[here];
+      const food = pt && sp.foods.has(this.producers[pt].id) ? this.pE[here] - this.producers[pt].max * B.grazeFloor : 0;
+      if (e.state !== 'filter' || Math.hypot(e.wx - e.x, e.wy - e.y) < 0.6 || food <= 1) {
+        const p = this._randomLand(e.x, e.y, 3, st.swim);
+        e.wx = p[0]; e.wy = p[1];
+      }
+      e.state = 'filter'; e.tk = 1;
+      return;
+    }
+
     let best = 0, bestKind = 0, bestTile = -1, bestEnt = null, bestCarr = null, bestFood = null;
     const terrPen = (x, y) => (marker && Math.hypot(x - marker.x, y - marker.y) > B.territoryRadius ? 0.5 : 1);
     const foodMult = dir === 'forage' ? 1.5 : 1;
@@ -1005,6 +1059,7 @@ window.Trophic = window.Trophic || {};
         else { x = cx + Math.round(rng.range(-r, r)); y = cy + Math.round(rng.range(-r, r)); }
         if (x < 0 || y < 0 || x >= N || y >= N) continue;
         const i = y * N + x;
+        if (st.swim && this.terrain[i] !== 1) continue;   // swimmers can't reach food on land
         const d = Math.hypot(x + 0.5 - e.x, y + 0.5 - e.y);
         const div = 1 + d * 0.25;
         if (decomposer) {
@@ -1113,7 +1168,7 @@ window.Trophic = window.Trophic || {};
       this.query(e.x, e.y, 6, o => { if (o.sp === sp) { sx += o.x; sy += o.y; n++; } });
       if (n > 1) { cx = lerp(e.x, sx / n, st.cohesion); cy = lerp(e.y, sy / n, st.cohesion); r = lerp(st.roam, 3, st.cohesion); }
     }
-    const p = this._randomLand(cx, cy, r);
+    const p = this._randomLand(cx, cy, r, st.swim);
     e.wx = p[0]; e.wy = p[1];
   };
 
@@ -1128,7 +1183,8 @@ window.Trophic = window.Trophic || {};
       spd *= this.ectoPerf;
     }
     if (e.venomT > 0) spd *= 0.6;
-    if (!st.flight && this.isWater(e.x, e.y)) spd *= 0.5;
+    if (st.swim) { if (!this.isWater(e.x, e.y)) spd *= 0.3; }
+    else if (!st.flight && this.isWater(e.x, e.y)) spd *= 0.5;
     let tx = e.x, ty = e.y, mult = 0, stop = 0;
     switch (e.state) {
       case 'flee': {
@@ -1150,6 +1206,7 @@ window.Trophic = window.Trophic || {};
       case 'graze': tx = (e.ti % N) + 0.5; ty = ((e.ti / N) | 0) + 0.5; mult = 0.8; break;
       case 'scavenge': if (e.tc && e.tc.alive) { tx = e.tc.x; ty = e.tc.y; mult = 0.9; stop = 0.2; } break;
       case 'wander': tx = e.wx; ty = e.wy; mult = 0.45; break;
+      case 'filter': tx = e.wx; ty = e.wy; mult = 0.35; break;
       case 'migrate': tx = e.wx; ty = e.wy; mult = 0.85; break;
       case 'seek': tx = e.wx; ty = e.wy; mult = 0.7; break;
       case 'swarm': tx = e.wx; ty = e.wy; mult = 0.75; break;
@@ -1166,6 +1223,13 @@ window.Trophic = window.Trophic || {};
     e.y += (dy / d) * step;
     e.hx = dx / d; e.hy = dy / d;
     if (!e.sp.transient) { e.x = clamp(e.x, 0.1, N - 0.1); e.y = clamp(e.y, 0.1, N - 0.1); }
+    // Swimmers can't haul out: a step onto land is undone and they turn back to open water.
+    if (st.swim && !this.isWater(e.x, e.y) && this.isWater(e.px, e.py)) {
+      e.x = e.px; e.y = e.py;
+      const p = this._randomLand(e.x, e.y, 3, true);
+      e.wx = p[0]; e.wy = p[1];
+      if (e.state === 'graze' || e.state === 'wander' || e.state === 'filter') e.think = 0;
+    }
     e.moveFrac = step / st.speed;
   };
 
@@ -1215,6 +1279,21 @@ window.Trophic = window.Trophic || {};
         }
         break;
       }
+      case 'filter': {
+        // Strain plankton from the tile underfoot while drifting.
+        const i = this.tileAt(e.x, e.y), t = this.ptype[i];
+        if (!t || !e.sp.foods.has(this.producers[t].id)) return;
+        const room = st.maxE - e.E;
+        if (room < 1) { e.state = 'rest'; e.think = 0; return; }
+        const P = this.producers[t];
+        const avail = this.pE[i] - P.max * B.grazeFloor;
+        const amt = Math.min(st.eatRate * (st.ecto ? this.ectoPerf : 1), avail, room / (st.plantA * st.P));
+        if (amt <= 0.05) return;
+        this.pE[i] -= amt;
+        this.pbook.eaten[t] += amt;
+        this._digest(e, amt, st.plantA, st.P, P.name, i, 'producer');
+        break;
+      }
       case 'scavenge': {
         const c = e.tc;
         if (!c || !c.alive) { e.think = 0; e.state = 'wander'; return; }
@@ -1245,6 +1324,7 @@ window.Trophic = window.Trophic || {};
     rs.eaten[src] = (rs.eaten[src] || 0) + amt;
     const lv = srcLv || 'other';
     rs.eatenLv[lv] = (rs.eatenLv[lv] || 0) + amt;
+    rs.assimLv[lv] = (rs.assimLv[lv] || 0) + amt * A;
     rs.ingested += amt;
     rs.assimilated += amt * A;
     rs.gain += gain;
@@ -1309,7 +1389,9 @@ window.Trophic = window.Trophic || {};
     this.events.push({ type: cause === 'k' ? 'kill' : 'death', x: e.x, y: e.y, player: e.sp.isPlayer });
     let c = null;
     if (e.E > 0.5) {
-      c = { id: this.nextId++, x: e.x, y: e.y, E: e.E, alive: true, src: e.sp.name, lv: e.sp.level, mass: e.st.mass };
+      // A kill passes energy up the grazing chain at the prey's level; a body left by starvation, age or
+      // disease feeds the detrital chain, like litter, whoever eats it.
+      c = { id: this.nextId++, x: e.x, y: e.y, E: e.E, alive: true, src: e.sp.name, lv: cause === 'k' ? e.sp.level : 'carrion', mass: e.st.mass };
       this.carrion.push(c);
     } else if (e.E > 0) this.detr[this.tileAt(e.x, e.y)] += e.E;
     e.E = 0;
@@ -1384,7 +1466,7 @@ window.Trophic = window.Trophic || {};
       rs.birthMids.push(mid);
     }
     for (let k = 0; k < n; k++) {
-      const p = this._randomLand(e.x, e.y, 0.8);
+      const p = this._randomLand(e.x, e.y, 0.8, st.swim);
       const g = T.Evo.inherit(this, pa, pb, sp, muMult);
       const c = this.spawn(sp, p[0], p[1], each - tissueEach, g, { grow: B.juvenileMass, tissue: tissueEach, parents: [e.num, mate ? mate.num : e.num], iso: e.iso });
       c.hp = c.st.maxHp * c.st.youngHp;

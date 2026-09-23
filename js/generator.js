@@ -213,6 +213,16 @@ window.Trophic = window.Trophic || {};
     };
   };
 
+  // Open Channel: a hand-authored ocean world for the inverted biomass pyramid.
+  const CHANNEL_ARCHETYPES = { 'filter-feeder': 'Filter-feeder', 'schooling-fish': 'Schooling fish', 'apex-swimmer': 'Apex swimmer' };
+  Gen.channelRoster = function () {
+    return {
+      mode: 'channel', biome: 'channel',
+      producers: T.CHANNEL_PRODUCERS.map(p => Object.assign({ hue: 0, pattern: 'plain' }, p)),
+      species: T.CHANNEL_SPECIES.map(d => Object.assign({ hue: 0, archetypeName: CHANNEL_ARCHETYPES[d.archetype] || (ARCH_BY_ID[d.archetype] || {}).name }, d)),
+    };
+  };
+
   function makeProducers(rng) {
     const kinds = ['ground'];
     const extra = ['tall', 'vine', 'woody', 'aquatic', 'ground', 'tall'];

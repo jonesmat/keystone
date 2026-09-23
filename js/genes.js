@@ -38,7 +38,7 @@ window.Trophic = window.Trophic || {};
     { key: 'meatGut', name: 'Meat gut', cat: 'Diet', tag: 'DIET', min: 0, max: 3, def: 0, step: 1, mp: 3, upkeep: 0.004,
       effect: '+0.05 meat assimilation.' },
     { key: 'metabolism', name: 'Metabolism', cat: 'Diet', tag: 'DIET', min: 0, max: 1, def: 0, step: 1, mp: 4, upkeep: 0, upkeepText: 'toggle', discrete: true,
-      effect: 'Endotherm: full winter activity. Ectotherm: P +0.08 but −40% speed below 60% light.' },
+      effect: 'Endotherm: full activity in the cold, but pays to stay warm. Ectotherm: no warming cost, but slows in the cold and is torpid below freezing.' },
     { key: 'symbiotic', name: 'Symbiotic gut', cat: 'Diet', tag: 'SPECIAL', min: 0, max: 1, def: 0, step: 1, mp: 7, upkeep: 0.004, special: true,
       effect: 'Above 0.5: +0.15 plant assimilation.' },
 

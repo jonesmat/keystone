@@ -152,5 +152,70 @@ window.Trophic = window.Trophic || {};
     return v >= r[0] && v <= r[1];
   }
 
-  T.Energy = { LEVELS, CONSUMER_LEVELS, BANDS, TEXTBOOK, measure, inBand };
+  // ---------- the three pyramids ----------
+
+  // Textbook trophic levels. Omnivores stand with the herbivores as primary consumers.
+  const PYRAMID_LEVELS = [
+    { key: 'producer', name: 'Producers', levels: ['producer'] },
+    { key: 'herbivore', name: 'Herbivores', levels: ['herbivore', 'omnivore'] },
+    { key: 'carnivore1', name: 'Primary carnivores', levels: ['carnivore1'] },
+    { key: 'carnivore2', name: 'Secondary carnivores', levels: ['carnivore2'] },
+  ];
+  // Energy fixed at a level is assimilation from food one level down (Lindeman's trophic positions): an apex
+  // predator eating herbivores fixes that energy at level 3, not 4. Keys are the food's source levels.
+  // Eating secondary carnivores would be level 5, above this four-level pyramid, so it isn't counted.
+  const FIXED_FROM = [null, ['producer'], ['herbivore', 'omnivore'], ['carnivore1']];
+
+  // Numbers (individuals), biomass (standing crop, g/m²) and energy (EU fixed this round) per level, bottom first.
+  // Numbers and biomass may invert; energy must narrow at every level, and `violations` lists any step that doesn't.
+  function pyramids(w) {
+    const n = PYRAMID_LEVELS.length;
+    const numbers = new Array(n).fill(0), biomass = new Array(n).fill(0), energy = new Array(n).fill(0);
+    const row = {};
+    PYRAMID_LEVELS.forEach((L, k) => L.levels.forEach(l => (row[l] = k)));
+    const area = w.N * w.N;
+    const g = T.BALANCE.gramsPerEU;
+    numbers[0] = w.plantCount();
+    biomass[0] = (w.producerBiomass() * g) / area;
+    for (const e of w.ents) {
+      if (!e.alive) continue;
+      const k = row[e.sp.level];
+      if (k == null) continue;   // decomposers sit beside the pyramid, not in it
+      numbers[k]++;
+      biomass[k] += ((e.E + e.tissue) * g) / area;
+    }
+    let npp = 0;
+    for (let t = 1; t < w.producers.length; t++) npp += w.pbook.npp[t];
+    energy[0] = npp;
+    w.species.forEach((sp, i) => {
+      if (sp.level === 'decomposer') return;
+      const as = (w.rstats[i] && w.rstats[i].assimLv) || {};
+      for (let k = 1; k < n; k++) for (const src of FIXED_FROM[k]) energy[k] += as[src] || 0;
+    });
+    const inverted = arr => { const out = []; for (let k = 1; k < n; k++) if (arr[k] > 0 && arr[k] > arr[k - 1]) out.push(k); return out; };
+    const violations = [];
+    for (let k = 1; k < n; k++) if (energy[k] > 0 && energy[k] >= energy[k - 1]) violations.push(k);
+    return {
+      levels: PYRAMID_LEVELS, numbers, biomass, energy,
+      inverted: { numbers: inverted(numbers), biomass: inverted(biomass) },
+      violations,
+      // How many times over the producers replaced their standing crop this round (explains a biomass inversion).
+      turnover: biomass[0] > 0 ? (npp * g) / area / biomass[0] : 0,
+    };
+  }
+
+  // One sentence on why a pyramid inverts where it does (null when it doesn't).
+  function inversionNote(p, kind) {
+    const inv = p.inverted[kind];
+    if (!inv.length) return null;
+    const k = inv[0], lo = p.levels[k - 1].name.toLowerCase(), hi = p.levels[k].name.toLowerCase();
+    if (kind === 'biomass' && k === 1) {
+      return 'Inverted: ' + hi + ' outweigh the ' + lo + ' at any moment, but the ' + lo + ' produced ' +
+        (p.turnover >= 10 ? Math.round(p.turnover) : p.turnover.toFixed(1)) + '× their standing crop this round.';
+    }
+    if (kind === 'numbers' && k === 1) return 'Inverted: a few large ' + lo + ' feed many more ' + hi + '.';
+    return 'Inverted at ' + lo + ' → ' + hi + ': standing crop can invert; only the energy pyramid must narrow.';
+  }
+
+  T.Energy = { LEVELS, CONSUMER_LEVELS, BANDS, TEXTBOOK, measure, inBand, PYRAMID_LEVELS, pyramids, inversionNote };
 })(window.Trophic);

@@ -15,13 +15,15 @@ window.Trophic = window.Trophic || {};
   };
   T.LEVEL_ORDER = ['producer', 'herbivore', 'omnivore', 'carnivore1', 'carnivore2', 'decomposer'];
 
-  // Producer kinds decide where a producer grows on the map.
+  // Producer kinds decide where a producer grows on the map. perTile is how many individual plants a full
+  // tile holds, so the numbers pyramid can count plants next to animals (one tree spans about four tiles).
   T.PRODUCER_KINDS = {
-    ground:  { name: 'ground cover',  height: 0 },
-    tall:    { name: 'tall shader',   height: 2 },
-    vine:    { name: 'fruiting vine', height: 1 },
-    woody:   { name: 'woody store',   height: 3 },
-    aquatic: { name: 'aquatic mat',   height: 0 },
+    ground:   { name: 'ground cover',  height: 0, perTile: 400 },
+    tall:     { name: 'tall shader',   height: 2, perTile: 40 },
+    vine:     { name: 'fruiting vine', height: 1, perTile: 20 },
+    woody:    { name: 'woody store',   height: 3, perTile: 0.25 },
+    aquatic:  { name: 'aquatic mat',   height: 0, perTile: 60 },
+    plankton: { name: 'phytoplankton', height: 0, perTile: 5000 },
   };
 
   T.MEADOW_PRODUCERS = [
@@ -80,6 +82,47 @@ window.Trophic = window.Trophic || {};
   ];
 
   // Species that only arrive through world events.
+  // Open Channel: mostly open water. Phytoplankton holds little standing crop but regrows in about a second,
+  // so the grazers outweigh it at any moment while it still out-produces them: an inverted biomass pyramid
+  // (the English Channel example, P 4 → H 21 g/m²). swim = moves in water only; filter = strains plankton while drifting.
+  T.CHANNEL_PRODUCERS = [
+    { id: 'drift', name: 'Driftbloom', kind: 'plankton', max: 30, resp: 0.35, edible: 0.9, height: 0, leaf: 1.4, regrowDelay: 0, fruit: false, tough: 0, moist: 1,
+      color: [96, 170, 150], note: 'Single-celled algae across the open water. Almost no standing crop; regrows in about a second.' },
+    { id: 'eelgrass', name: 'Eelgrass', kind: 'aquatic', max: 30, resp: 0.45, edible: 0.3, height: 0, leaf: 1.0, regrowDelay: 20, fruit: false, tough: 0.3, moist: 0.95,
+      color: [110, 160, 120], note: 'Meadows in the shallows around the islands.' },
+  ];
+
+  T.CHANNEL_SPECIES = [
+    { id: 'driftling', name: 'Driftling', level: 'herbivore', archetype: 'filter-feeder', startPop: 450, herdSize: [15, 30],
+      base: { speed: 0.07, sight: 3 }, eats: ['drift'],
+      genome: { size: 0.3, diet: 0, repro: 0, metabolism: 'ecto', limbs: 6, longevity: 2, tail: 0, roam: 4, cohesion: 0.4 }, flags: { swim: true, filter: true },
+      behavior: 'Drifting swarms that strain phytoplankton from the water.', weakness: 'Tiny and defenceless; everything eats them.' },
+    { id: 'glassclam', name: 'Glassclam', level: 'herbivore', archetype: 'filter-feeder', startPop: 90,
+      base: { speed: 0.02, sight: 2 }, eats: ['drift'],
+      genome: { size: 1.2, diet: 0, repro: 4, armor: 3, metabolism: 'ecto', limbs: 2, longevity: 4, tail: 0, roam: 1 }, flags: { swim: true, filter: true },
+      behavior: 'Barely moves; filters whatever the current brings.', weakness: 'Cannot flee.' },
+    { id: 'tidecrab', name: 'Tidecrab', level: 'omnivore', archetype: 'scavenger', startPop: 30,
+      base: { speed: 0.08, sight: 4 }, eats: ['eelgrass', 'drift', 'carrion'],
+      genome: { size: 1.5, diet: 3, armor: 2, repro: 3, metabolism: 'ecto', limbs: 6, tail: 0 }, flags: { swim: true, scavenger: true },
+      behavior: 'Picks over the shallows and the sea floor.', weakness: 'Slow in open water.' },
+    { id: 'silverfin', name: 'Silverfin', level: 'carnivore1', archetype: 'schooling-fish', startPop: 20, herdSize: [8, 15],
+      base: { speed: 0.2, sight: 6 }, eats: ['driftling', 'glassclam'],
+      genome: { size: 1.5, diet: 9, repro: 8, longevity: 5, metabolism: 'ecto', limbs: 2, tail: 2, social: 2, cohesion: 0.8 }, flags: { swim: true },
+      behavior: 'Schools that sweep through Driftling swarms.', weakness: 'Easy prey for seals and gulls.' },
+    { id: 'skimgull', name: 'Skimgull', level: 'carnivore1', archetype: 'aerial', startPop: 4,
+      base: { speed: 0.24, sight: 9 }, eats: ['driftling', 'carrion'],
+      genome: { size: 1.2, diet: 9, repro: 8, longevity: 5, organs: { flight: true }, limbs: 2, roam: 12 }, flags: { aerial: true },
+      behavior: 'Picks Driftlings from the surface.', weakness: 'Burns energy fast to stay warm.' },
+    { id: 'greyseal', name: 'Greyseal', level: 'carnivore2', archetype: 'apex-swimmer', startPop: 2,
+      base: { speed: 0.2, sight: 8, apex: true }, eats: ['silverfin', 'carrion'],
+      genome: { size: 10, diet: 10, bite: 2, repro: 10, longevity: 6, fat: 3, tail: 2, limbs: 2 }, flags: { swim: true },
+      behavior: 'Apex swimmer; a thick blubber layer holds its warmth.', weakness: 'Needs many fish.' },
+    { id: 'siltworm', name: 'Siltworm', level: 'decomposer', archetype: 'detritivore', startPop: 60,
+      base: { speed: 0.05, sight: 3 }, eats: ['detritus', 'carrion'],
+      genome: { size: 0.4, diet: 5, repro: 5, metabolism: 'ecto', limbs: 0, longevity: 3 }, flags: { decomposer: true, asexual: true, swim: true },
+      behavior: 'Works through sinking detritus on the sea floor.', weakness: 'Not a rival; killing them starves the plankton.' },
+  ];
+
   T.EVENT_SPECIES = {
     marauder: { id: 'marauder', name: 'Mirefang', level: 'omnivore', archetype: 'opportunist', startPop: 8, invasive: true,
       base: { speed: 0.15, sight: 6 }, eats: ['moss', 'bloom', 'fruit', 'hopper', 'scuttler', 'carrion'],

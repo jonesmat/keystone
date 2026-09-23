@@ -22,7 +22,12 @@ window.Trophic = window.Trophic || {};
     $('nw-begin').addEventListener('click', () => G.beginRun());
     $('nw-reroll').addEventListener('click', () => G.rerollFounder());
     $('btn-continue').addEventListener('click', () => G.continueRun());
-    for (const k in B.biomes) { const b = B.biomes[k]; $('nw-biome').append(el('option', { value: k, text: b.name + ' · sunlight ' + Math.round(b.light * 100) + '%' })); }
+    // Generated worlds are land rosters; the aquatic Open Channel is listed but only reachable from its own tab.
+    for (const k in B.biomes) {
+      const b = B.biomes[k], opt = el('option', { value: k, text: b.name + ' · sunlight ' + Math.round(b.light * 100) + '%' });
+      if (b.aquatic) opt.disabled = true;
+      $('nw-biome').append(opt);
+    }
     const seg = $('nw-difficulty');
     for (const k in B.difficulties) seg.append(el('button', { 'data-diff': k, text: B.difficulties[k].name, onclick: () => G.setDifficulty(k) }));
     const row = $('nw-tpl-row');
@@ -44,7 +49,7 @@ window.Trophic = window.Trophic || {};
     $('continue-box').hidden = !save;
     if (save) {
       const r = save.run;
-      $('continue-info').textContent = '— ' + r.speciesName + ', round ' + r.round + ' · ' + (r.mode === 'generated' ? 'generated world' : 'Temperate Meadow') + ' · ' + B.difficulties[r.difficulty].name;
+      $('continue-info').textContent = '— ' + r.speciesName + ', round ' + r.round + ' · ' + (r.mode === 'generated' ? 'generated world' : r.mode === 'channel' ? 'Open Channel' : 'Temperate Meadow') + ' · ' + B.difficulties[r.difficulty].name;
     }
     const seedIn = $('nw-seed');
     if (document.activeElement !== seedIn) seedIn.value = st.seed;
@@ -64,8 +69,9 @@ window.Trophic = window.Trophic || {};
     sb.className = 'stability';
     sb.innerHTML = '';
     const s = st.stability;
-    if (st.mode === 'meadow') {
-      sb.append(el('div', { class: 'row' }, el('b', { text: 'Hand-authored roster' }), el('span', { text: '14 species' })),
+    if (st.mode === 'meadow' || st.mode === 'channel') {
+      const n = st.roster.producers.length + st.roster.species.length;
+      sb.append(el('div', { class: 'row' }, el('b', { text: 'Hand-authored roster' }), el('span', { text: n + ' species' })),
         el('div', { class: 'track' }, el('i', { style: { width: '100%' } })), el('span', { class: 'caption', text: 'Individuals still vary and evolve' }));
     } else if (s.state === 'running') {
       sb.append(el('div', { class: 'row' }, el('b', { text: 'Testing roster…', style: { color: 'var(--ink)' } }), el('span', { text: 'attempt ' + s.attempt + ' of 20' })),
@@ -472,7 +478,7 @@ window.Trophic = window.Trophic || {};
   S.renderPhylogeny = function (selId) {
     const run = G.run, w = G.world, ph = run.phylo;
     const R = Math.max(1, ph.lastRound);
-    $('ph-sub').textContent = '· ' + (run.mode === 'generated' ? 'Generated world' : 'Temperate Meadow') + ' · rounds 1–' + R;
+    $('ph-sub').textContent = '· ' + (run.mode === 'generated' ? 'Generated world' : run.mode === 'channel' ? 'Open Channel' : 'Temperate Meadow') + ' · rounds 1–' + R;
     const recs = Object.values(ph.species);
     const splits = recs.filter(r => r.parentId).length, ext = recs.filter(r => r.extinct).length;
     $('ph-stats').innerHTML = '<b>' + (recs.length + Object.keys(ph.producers).length) + '</b> species seen · <b>' + splits + '</b> split' + (splits === 1 ? '' : 's') + ' · <b>' + ext + '</b> extinct';
