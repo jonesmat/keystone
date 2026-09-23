@@ -178,11 +178,69 @@ Trophic.BALANCE = {
   tissuePerMass: 200,       // EU of body tissue per unit of adult mass
 
   biomes: {
-    meadow:  { id: 'meadow',  name: 'Meadow',  light: 1.0, water: 0.09, winter: 0.50, tMean: 10, tAmp: 12 },
-    wetland: { id: 'wetland', name: 'Wetland', light: 1.1, water: 0.22, winter: 0.55, tMean: 12, tAmp: 10 },
-    taiga:   { id: 'taiga',   name: 'Taiga',   light: 0.7, water: 0.07, winter: 0.35, tMean: -2, tAmp: 16 },
+    meadow:  { id: 'meadow',  name: 'Meadow',  light: 1.0, water: 0.09, winter: 0.50, tMean: 10, tAmp: 12, rain: 60 },
+    wetland: { id: 'wetland', name: 'Wetland', light: 1.1, water: 0.22, winter: 0.55, tMean: 12, tAmp: 10, rain: 110 },
+    taiga:   { id: 'taiga',   name: 'Taiga',   light: 0.7, water: 0.07, winter: 0.35, tMean: -2, tAmp: 16, rain: 50 },
     // Mostly open water around a few islands; the sea keeps temperatures mild.
-    channel: { id: 'channel', name: 'Open Channel', light: 1.0, water: 0.9, winter: 0.60, tMean: 12, tAmp: 5, aquatic: true },
+    channel: { id: 'channel', name: 'Open Channel', light: 1.0, water: 0.9, winter: 0.60, tMean: 12, tAmp: 5, rain: 80, aquatic: true },
+  },
+
+  // ---------- Phase 3: nutrient, water and carbon cycles (js/cycles.js) ----------
+  // Tiles update in ten staggered groups, so each tile's cycles step every 10 ticks.
+  cycleStagger: 10,
+  nitrogen: {
+    plant: 0.010,           // N per EU of plant tissue (C:N); legumes are protein-rich
+    legume: 0.020,
+    plankton: 0.015,
+    animal: 0.040,          // N per EU of animal body tissue (protein ~50% of dry weight); reserves hold none
+    storeShare: 0.02,       // an animal's N store holds 2% of its tissue N; the surplus is excreted
+    legumeCost: 0.15,       // share of a legume's NPP its root-nodule bacteria take
+    legumeLeak: 0.003,      // extra N fixed per EU of legume NPP beyond the plant's shortfall, released to the soil as ammonia
+    freeFix: 0.00004,       // free-living bacteria, per tile per tick at full warmth and moisture
+    lightning: 0.001,       // nitrate per tick on tiles under a storm (5–10% of fixation, per the text)
+    urea: 0.02,             // urea → ammonia per tick (mammals; fast)
+    uric: 0.003,            // uric acid → ammonia per tick (birds, reptiles, invertebrates; slow)
+    nitrify1: 0.004,        // ammonia → nitrite per tick, aerobic soil only
+    nitrify2: 0.02,         // nitrite → nitrate per tick
+    denitrify: 0.004,       // nitrate → N2 per tick in waterlogged or compacted soil
+    toSalt: 0.001,          // dissolved nitrate → nitrate salts per tick in dry soil
+    fromSalt: 0.02,         // salts → dissolved nitrate per tick under rain
+    nitrateShare: 0.8,      // plants take 80% of their N as nitrate, 20% as ammonia
+    startNH4: 0.6, startNO3: 1.5, startSalt: 2.0, startWater: 0.4,   // soil pools per tile at world start
+    indexRef: 3,            // soil N (ammonia + nitrate) that reads as 100% on the map's nutrient tint
+  },
+  water: {
+    // rainfall per biome is biome.rain (cm/yr); one round is one year
+    unitsPerCm: 0.1,        // soil-water units per cm of rain on a tile
+    eventsPerRound: 40,
+    eventRadius: [10, 22], eventTicks: [20, 50],
+    stormShare: 0.3,        // share of rain events with lightning
+    intercept: { ground: 0.1, tall: 0.25, vine: 0.15, woody: 0.4, aquatic: 0, plankton: 0 },
+    infiltration: 0.06,     // soil water taken in per tick on loose, covered soil
+    fieldCapacity: 0.6, waterlogged: 0.9,
+    et: 0.012,              // evapotranspiration per tick at full soil water, warmth and cover
+    percolation: 0.004,     // share of water above field capacity draining to groundwater per tick
+    capillary: 0.004,       // rise toward 0.85 per tick where the water table is near the surface
+    baseflow: 0.002,        // groundwater draining to lakes and streams per tick
+    mixing: 0.04,           // open water: share of the difference in dissolved N evened out with a neighbour per tick
+  },
+  soil: {
+    compactK: 0.015,        // compaction per tile of travel per mass^0.75 (large herds pack the soil)
+    compactRecover: 0.00008, // per tick, faster under roots
+    anaerobicAt: 0.5,       // compaction above this stops nitrification and starts denitrification
+    microbeFloor: 0.05,     // soil microbes' decomposition rate with no decomposer guild left (×1 at the starting guild)
+    peatShare: 0.4,         // share of decomposing detritus that becomes peat on waterlogged tiles
+    peatSlow: 0.2,          // decomposition speed on waterlogged tiles
+  },
+  carbon: {
+    oceanUptake: 0.02,      // carbon absorbed per open-water tile per tick, less as the water warms
+  },
+  climate: {
+    co2Start: 350,          // ppm (the textbook's Keeling curve runs 310 → 360 over 1958–1992)
+    ppmPerRound: 10,        // with the trend on; about a doubling in 30 rounds
+    sensitivity: 3,         // °C of warming per doubling of CO2
+    latGradient: 4,         // °C colder at the map's north edge than its south edge
+    tRange: { ground: 14, tall: 11, vine: 12, woody: 8, aquatic: 10, plankton: 10 },   // producers' temperature envelope half-width
   },
 
   // Pyramids (Phase 3). Standing crop is shown as g/m² by treating a tile as a 1 m² sample plot of its ground

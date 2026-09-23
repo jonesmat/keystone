@@ -270,10 +270,32 @@ window.Trophic = window.Trophic || {};
       : T.Energy.inversionNote(pd, kind);
     $('pyr-note').hidden = !note;
     $('pyr-note').textContent = note || '';
+    UI.updateCycles();
     const pyr = w.pyramid();
     const share = pyr.levels[p.level] > 0 ? pyr.player[p.level] / pyr.levels[p.level] : 0;
     $('share-note').textContent = 'Your share of ' + T.LEVELS[p.level].name.toLowerCase() + ': ' + pct(share) + ' (need ' + pct(B.dominanceShare) + ')';
     $('sun-note').textContent = 'Sunlight captured this tick: ' + fmt(w.capturedTick) + ' EU';
+  };
+
+  // Nitrogen, water and carbon for the whole map, this round (Phase 3 cycles).
+  UI.updateCycles = function () {
+    const w = G.world, box = $('cycles-strip');
+    const s = w.soilSummary();
+    const row = (label, value) => el('div', { class: 'cy-row' }, el('span', { text: label }), el('b', { text: value }));
+    const sign = v => (v >= 0 ? '+' : '−') + fmt(Math.abs(v));
+    const n = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Soil nitrogen' }),
+      row('Ammonium · nitrate', fmt(s.nh4) + ' · ' + fmt(s.no3)),
+      row('Fixed this round', '+' + fmt(s.fixation)),
+      row('Lost (denitrified, leached)', '−' + fmt(s.losses)));
+    if (s.nLimitedShare > 0.1) n.append(el('div', { class: 'cy-warn', text: 'Plant growth is nitrogen-limited ' + pct(s.nLimitedShare) + ' of the time' }));
+    const water = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Water' }),
+      row('Soil moisture', pct(s.moisture)),
+      row('Water table, vs start', pct(s.waterTable)),
+      row('Compacted · waterlogged', pct(s.compactedShare) + ' · ' + pct(s.waterloggedShare)));
+    const carbon = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Carbon' }),
+      row(s.carbonBalance >= 0 ? 'Net sink this round' : 'Net source this round', sign(s.carbonBalance)),
+      row('CO₂', Math.round(s.co2) + ' ppm' + (s.tOffset > 0.05 ? ' · +' + s.tOffset.toFixed(1) + ' °C' : '')));
+    box.replaceChildren(n, water, carbon);
   };
 
   UI.updateRightPanel = function () {
@@ -447,7 +469,15 @@ window.Trophic = window.Trophic || {};
       const kv = el('div', { class: 'ins-kv' });
       if (P) kv.append(el('div', null, 'Stored ', el('b', { text: fmt(w.pE[i]) + ' / ' + fmt(P.max) + ' EU' })));
       kv.append(el('div', null, 'Light ', el('b', { text: light.toFixed(1) + ' EU/t' })),
-        el('div', null, 'Soil nutrients ', el('b', { text: pct(w.nutr[i]) })), el('div', null, 'Moisture ', el('b', { text: pct(w.moist[i]) })));
+        el('div', null, 'Ammonium · nitrate ', el('b', { text: w.nh4[i].toFixed(2) + ' · ' + w.no3[i].toFixed(2) })),
+        el('div', null, 'Moisture ', el('b', { text: pct(w.moist[i]) })));
+      if (!w.terrain[i]) {
+        const anaerobic = w.sw[i] > B.water.waterlogged ? 'waterlogged · denitrifying' : w.comp[i] > B.soil.anaerobicAt ? 'compacted · denitrifying' : null;
+        kv.append(el('div', null, 'Compaction ', el('b', { text: pct(w.comp[i]) })));
+        if (anaerobic) kv.append(el('div', null, 'Soil ', el('b', { text: anaerobic })));
+        if (w.peat[i] > 1) kv.append(el('div', null, 'Peat ', el('b', { text: fmt(w.peat[i]) + ' EU' })));
+      }
+      if (P && P.fixer) kv.append(el('div', null, 'Legume ', el('b', { text: 'fixes nitrogen' })));
       if (w.fruit[i] > 0.5) kv.append(el('div', null, 'Fruit ', el('b', { text: fmt(w.fruit[i]) + ' EU' })));
       box.append(kv);
       if (P) {

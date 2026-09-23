@@ -68,7 +68,7 @@ window.Trophic = window.Trophic || {};
       note: 'Ground cover that regrows quickly but holds little energy per tile.' },
     tall:    { max: [320, 450], resp: [0.40, 0.50], edible: 0.30, height: 2, leaf: [1.05, 1.15], regrow: [60, 100], tough: [0.6, 1.0], moist: [0.65, 0.85], color: [150, 172, 96], suffix: ['spire', 'stalk', 'reed'],
       note: 'Grows tall and shades its neighbours; slow to recover after grazing.' },
-    vine:    { max: [200, 300], resp: [0.45, 0.55], edible: 0.35, height: 1, leaf: [0.95, 1.05], regrow: [0, 0],    tough: [0.3, 0.5], moist: [0.45, 0.65], color: [158, 190, 122], fruit: true, suffix: ['coil', 'vine', 'trail'],
+    vine:    { max: [200, 300], resp: [0.45, 0.55], edible: 0.35, fixer: true, height: 1, leaf: [0.95, 1.05], regrow: [0, 0],    tough: [0.3, 0.5], moist: [0.45, 0.65], color: [158, 190, 122], fruit: true, suffix: ['coil', 'vine', 'trail'],
       note: 'Fruits in spring and summer; fruit is easier to digest than leaves.' },
     woody:   { max: [1200, 1700], resp: [0.50, 0.60], edible: 0.30, height: 3, leaf: [1.15, 1.25], regrow: [30, 50], tough: [1.6, 2.4], moist: [0.35, 0.55], color: [104, 146, 88], suffix: ['hold', 'bark', 'wood'],
       note: 'A huge energy store behind tough bark. Small eaters struggle to get through it.' },
@@ -240,7 +240,7 @@ window.Trophic = window.Trophic || {};
       const name = uniqueName(rng.pick(PRODUCER_ROOTS), rng.pick(A.suffix), taken, rng, A.suffix, PRODUCER_ROOTS);
       const hue = Math.round(rng.range(-20, 20));
       return {
-        id: 'p' + i, name, kind, max: Math.round(rr(rng, A.max)), resp: Math.round(rr(rng, A.resp) * 100) / 100, edible: A.edible, height: A.height, leaf: rr(rng, A.leaf), regrowDelay: Math.round(rr(rng, A.regrow)),
+        id: 'p' + i, name, kind, max: Math.round(rr(rng, A.max)), resp: Math.round(rr(rng, A.resp) * 100) / 100, edible: A.edible, fixer: !!A.fixer, height: A.height, leaf: rr(rng, A.leaf), regrowDelay: Math.round(rr(rng, A.regrow)),
         fruit: !!A.fruit, tough: rr(rng, A.tough), moist: rr(rng, A.moist), color: A.color.map(c => clamp(Math.round(c + rng.range(-10, 10)), 0, 255)),
         hue, pattern: rng.pick(['plain', 'spots', 'bands']), note: A.note, archetypeName: T.PRODUCER_KINDS[kind].name,
       };

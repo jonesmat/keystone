@@ -38,10 +38,11 @@ function bookExample(tissue) {
   w.setProducers([{ id: 'test', name: 'Testgrass', kind: 'ground', max: 1e12, resp: 0.5, height: 0, leaf: 1, regrowDelay: 0,
     fruit: false, tough: 0, moist: 0.5, color: [0, 0, 0] }]);
   w._generateTerrain();
+  w._initCycles(true);
   const roster = T.Gen.meadowRoster().species;
   const hDef = roster.find(s => s.level === 'herbivore'), cDef = roster.find(s => s.level === 'carnivore1');
   const H = w.addSpecies(hDef, false), C = w.addSpecies(cDef, false);
-  const ent = sp => { const e = { sp, g: sp.genome, E: 0, tissue: 0, alive: true, x: 1, y: 1 }; w.ents.push(e); return e; };
+  const ent = sp => { const e = { sp, g: sp.genome, E: 0, tissue: 0, nT: 0, nS: 0, alive: true, x: 1, y: 1 }; w.ents.push(e); return e; };
   const eH = ent(H), eC = ent(C);
   w.ledger.initial = w.totalPools();
   w.beginRound(1);

@@ -20,6 +20,7 @@ window.Trophic = window.Trophic || {};
     $('nw-seed').addEventListener('change', e => G.setSeed(parseInt(e.target.value, 10) >>> 0));
     $('nw-biome').addEventListener('change', e => G.setBiome(e.target.value));
     $('nw-begin').addEventListener('click', () => G.beginRun());
+    $('nw-climate').addEventListener('change', e => G.setClimateTrend(e.target.checked));
     $('nw-reroll').addEventListener('click', () => G.rerollFounder());
     $('btn-continue').addEventListener('click', () => G.continueRun());
     // Generated worlds are land rosters; the aquatic Open Channel is listed but only reachable from its own tab.

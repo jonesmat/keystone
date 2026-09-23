@@ -42,6 +42,7 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `js/genes.js` | Gene schema (range, step, MP cost, upkeep), genome helpers, base64 packing for saves |
 | `js/data.js` | Trophic levels, the hand-authored Meadow roster, templates, directives, events, tutorial, Codex ecology notes |
 | `js/sim.js` | Fixed-step simulation (10 ticks/s): per-individual stats, juveniles, aging, mate-finding, behaviour genes, producer tile genes, microhabitats, energy ledger, save v2 plus v1 migration. Phase 3: GPP/NPP booking per producer, litterfall, upkeep-only metabolism with thermoregulation, body tissue, ectotherm temperature response |
+| `js/cycles.js` | Phase 3 nutrient, water and carbon cycles: soil nitrogen pools and their bacteria, legume and free-living fixation, excretion by body plan, the nitrogen ledger, rain events, infiltration, runoff, evapotranspiration, groundwater, compaction, peat, open-water carbon uptake and the CO₂/climate trend |
 | `js/energy.js` | Phase 3 energy chain: measures each round's GPP, NPP, harvesting, assimilation, tissue growth and energy passed up per level, with the textbook ranges and each mode's target bands. Also the three pyramids (numbers, biomass, energy) and the notes that explain an inversion |
 | `js/evolution.js` | Inheritance and mutation, 2-means speciation, lineage splits, "What evolved" attribution, mutant detection, guided mutation and pressure |
 | `js/generator.js` | Archetypes, niche slots, genome sampling with quirks, food webs, names and colours, founder rolls, stability test |
@@ -53,6 +54,7 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `tools/headless.js` | Run one world in Node: `node tools/headless.js grazer 10 12345 [meadow\|generated]` |
 | `tools/sweep.js` | Seed sweep against the Phase 2 balance targets: `node tools/sweep.js --seeds 20 --rounds 30 [--mode generated] [--set key=value] [--csv out.csv]` |
 | `tools/check-events.js` | Smoke tests: inheritance, events, speciation, save round-trip, v1 migration, generator rules |
+| `tools/check-cycles.js` | Phase 3 cycle checks: nitrogen and energy conserved; removing decomposers slows producers; compaction denitrifies and sheds rain; legumes enrich soil; warming hits the south first: `node tools/check-cycles.js [--seeds 2] [--rounds 6]` |
 | `tools/check-pyramids.js` | Phase 3 pyramid checks: in Temperate Meadow and Open Channel the energy pyramid must narrow every round; numbers and biomass are checked against the design's validation table: `node tools/check-pyramids.js [--seeds 3] [--rounds 8]` |
 | `tools/check-energy.js` | Phase 3 energy checks: the textbook's 100,000-unit example must come back within ±10%, then hands-off worlds are measured against each mode's bands: `node tools/check-energy.js [--seeds 3] [--rounds 8] [--mode game\|realism\|both] [--legacy] [--set key=value]` |
 
@@ -106,6 +108,23 @@ Last `check-energy.js` run, 5 seeds × 10 rounds, hands-off Meadow:
 - **Open Channel** (New world tab): 90% open water around a few islands, and a new phytoplankton producer kind (30 EU max, regrows in about a second). Swimmers move only in water; filter-feeders strain plankton from whatever tile they drift through. The hand-authored roster: Driftbloom and Eelgrass; Driftling and Glassclam (filter-feeders); Tidecrab; Silverfin and Skimgull; Greyseal; Siltworm. The player's lineage swims there, and a plant-eater filter-feeds. The default founder switches to the Opportunist, because a warm-blooded Grazer can't stay warm on filtered plankton.
 
 Last `check-pyramids.js` run, 4 seeds × 8 rounds: energy narrowed in every round of both worlds. The Meadow was upright on numbers and biomass in 100% of rounds; the Open Channel's biomass was inverted (grazers outweigh phytoplankton) in 89%. The Open Channel's predators still boom and bust: Greyseals usually die out, and Silverfin do in some seeds.
+
+**P3-M3 Nutrient, water and carbon cycles: built** (`js/cycles.js`, updating a tenth of the tiles each tick).
+
+- **Nitrogen** replaces the old single soil-nutrient value. Each tile holds ammonium, nitrite, dissolved nitrate, nitrate salts, urea, uric acid and the nitrogen in dead matter. Nitrifying bacteria turn ammonium into nitrite and then nitrate, only in soil with oxygen. Waterlogged or compacted soil denitrifies instead, returning N₂ to the air. Dry soil locks nitrate up as salts, and rain dissolves them again.
+- **Plants and nitrogen:** plants draw 80% of their nitrogen as nitrate and 20% as ammonium, at their own C:N ratio, and stop growing when the soil runs out. Legumes (Bloomvine, and generated vines) use soil nitrogen when it's there and have their root nodules fix the shortfall, at a cost of 15% of their growth, leaking a little ammonium to the tiles around them. Free-living bacteria and lightning add a little more.
+- **Animals and nitrogen:** animals carry nitrogen in body tissue plus a small store. Feces take the egested share, and surplus nitrogen is excreted by body plan: swimmers and decomposers release ammonium, mammals urea (quick to break down), and birds and ectotherms uric acid (slow).
+- **Decomposers are a keystone guild.** Soil microbes' decomposition scales with the decomposer guild. In the check tool, killing every Rotmite halves producer growth within 4 rounds.
+- **Nitrogen ledger:** air + soil + bodies + dead matter stays constant, checked every 50 ticks (every tick with `?debug=1`). Errors run about 1e-6%.
+- **Water:** biomes have rainfall (Meadow 60 cm/yr). Rain falls in drifting events, and storms bring lightning. Leaves intercept some rain. Loose, covered soil soaks the rest in; compacted or bare soil sheds it as runoff downhill, carrying dissolved nitrate to low ground and lakes. Soil water above field capacity percolates to a map-wide water table, which keeps low ground moist and drains to lakes as baseflow. Soil moisture now comes from this budget, and a Drought event also cuts rain. `world.irrigation` draws groundwater down (for the aquifer scenario later). Open water mixes its dissolved nitrogen.
+- **Compaction:** heavy land animals pack the soil they cross, and it recovers slowly, faster under roots.
+- **Carbon** is booked alongside energy at 1 unit per EU. Waterlogged tiles decompose slowly and store part of their detritus as peat, which is an energy pool on the ledger. Open water absorbs CO₂, less as it warms. The HUD shows each round's balance as a net sink or source.
+- **Climate:** a New world checkbox, *Climate change*, turns on a CO₂ trend of +10 ppm per round, at 3 °C of warming per doubling. The map is 4 °C colder at its north edge. Each producer has a temperature envelope, so warming thins producers in the south first. Warming also speeds decomposition and brings fewer, heavier rains with more storms.
+- **HUD:** the left panel adds Soil nitrogen, Water and Carbon readouts, with a warning when plant growth is nitrogen-limited more than 10% of the time. The tile inspector shows ammonium and nitrate, moisture, compaction, peat and legumes.
+- **Energy-pyramid assertion:** now sums the last 3 rounds, allowing for stock the level below lost. A last predator eating the last prey no longer counts as a violation.
+- **Saves** carry the cycles; older saves start fresh soil pools.
+
+Last `check-cycles.js` run (2 seeds × 5 rounds): all five checks pass. Per round, fixation was about 2,700 N against 2,100 denitrified or leached. Runoff was about a third of rain. Plants were nitrogen-limited up to about 20% of the time, levelling off by round 8. `check-energy.js` and `check-pyramids.js` results are unchanged from milestone 2.
 
 Predators last longer than in Phase 2: with a Grazer player, apex predators now survive all 10 test rounds, and primary carnivores mostly do. **Realism mode isn't balanced yet:** endotherms and predators die out within 10 rounds.
 

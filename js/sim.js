@@ -191,6 +191,10 @@ window.Trophic = window.Trophic || {};
     this.lightFrac = 1;
     this.notes = [];
     this.pbook = null;   // per-round producer booking (GPP, respiration, NPP, litter, eaten), set up in setProducers
+    this.tOffset = 0;     // warming above the biome's climate, °C (js/cycles.js)
+    this.co2 = B.climate.co2Start;
+    this.climateTrend = !!opts.climateTrend;
+    this.irrigation = 0;  // groundwater drawn per tick by irrigation (scenarios with farming)
   }
 
   // Round accumulators for each producer type: the first two steps of the energy chain, plus what happened to NPP.
@@ -227,12 +231,15 @@ window.Trophic = window.Trophic || {};
     const diff = opts.difficulty || B.difficulties.standard;
     w.setProducers(opts.roster.producers);
     w._generateTerrain();
+    w._initCycles(true);
     for (const def of opts.roster.species) w.addSpecies(def, false).mu = diff.npcMu;
     if (opts.player) w.player = w.addSpecies(opts.player, true);
     w._populate();
     for (const sp of w.species) sp.initialPop = w.countPops().count[sp.idx];
+    w.decompRef = w.species.filter(sp => sp.level === 'decomposer').reduce((a, sp) => a + sp.initialPop, 0);
     w.updateMeans();
     w.ledger.initial = w.totalPools();
+    w.nledger.initial = w.totalNitrogen();
     w.beginRound(1);
     return w;
   };
@@ -243,6 +250,7 @@ window.Trophic = window.Trophic || {};
     this.plantNames = new Set(list.map(p => p.name).concat(['Fruit', 'Detritus']));
     this.producerIds = new Set(list.map(p => p.id));
     this.pbook = this._newProducerBook();
+    this._producerCycleTraits();
   };
 
   World.prototype.producerById = function (id) { return this.producers.find(p => p && p.id === id) || null; };
@@ -389,6 +397,7 @@ window.Trophic = window.Trophic || {};
     }
     elevs.sort((a, b) => a - b);
     const waterLine = elevs[Math.floor(elevs.length * this.biome.water)];
+    this.waterLine = waterLine;
     for (let i = 0; i < NT; i++) {
       const x = i % N, y = (i / N) | 0;
       this.terrain[i] = this.elev[i] < waterLine ? 1 : 0;
@@ -435,6 +444,8 @@ window.Trophic = window.Trophic || {};
       this.pgTol[i] = clamp(0.5 * (P.moist == null ? 0.5 : P.moist) + 0.5 * m + rng.gauss() * 0.05, 0, 1);
     }
     this._computeShade();
+    this.waterTiles = 0;
+    for (let i = 0; i < NT; i++) this.waterTiles += this.terrain[i];
   };
 
   World.prototype._computeShade = function () {
@@ -529,6 +540,8 @@ window.Trophic = window.Trophic || {};
       id: this.nextId++, num: ++sp.counter, sp, g, st, grow, growStep: Math.floor(grow * 10),
       x, y, px: x, py: y, hx: 1, hy: 0, E, hp: st.maxHp,
       tissue: opts.tissue != null ? opts.tissue : st.tissueAdult * grow,
+      // Nitrogen: in body tissue (protein) and a small store of assimilated N; energy reserves hold none.
+      nT: opts.nT != null ? opts.nT : (opts.tissue != null ? opts.tissue : st.tissueAdult * grow) * B.nitrogen.animal, nS: 0,
       state: 'wander', tk: 0, ti: -1, te: null, tc: null, food: null, threat: null,
       wx: x, wy: y, think: this.rng.int(B.decisionInterval), breedCd: grow >= 1 ? this.rng.int(st.breedCd + 1) : st.breedCd,
       attackCd: 0, chase: 0, fightT: 0, venomT: 0, venomDmg: 0, venomBy: -1, moveFrac: 0,
@@ -573,6 +586,7 @@ window.Trophic = window.Trophic || {};
   World.prototype.beginRound = function (round) {
     this._checkPyramid();
     if (round) this.round = round;
+    this._cyclesBeginRound();
     this.roundTick = 0;
     this.seasonIdx = 0;
     if (this.round > 1) this.climate = clamp(this.climate + this.rng.range(-0.05, 0.05), 0.85, 1.15);
@@ -595,13 +609,27 @@ window.Trophic = window.Trophic || {};
 
   // End-of-round assertion (every biome): energy fixed at each level must be below the level beneath it.
   // Numbers and biomass may invert and are only reported. The result stays on the world for the report and tools.
+  // Energy is summed over the last 3 rounds, since the textbook's pyramid is flow over time. A level may still
+  // out-fix the one beneath by as much as that lower level's standing stock shrank: a predator eating down stock
+  // built up in earlier rounds (the last seal eating the last fish). Anything beyond that is a real violation.
   World.prototype._checkPyramid = function () {
     if (!T.Energy || !this.pbook || !this.rstats.length) return;
     const p = T.Energy.pyramids(this);
     this.lastPyramids = p;
-    if (p.violations.length) {
+    const stockEU = p.biomass.map(b => (b * this.N * this.N) / B.gramsPerEU);
+    const hist = (this.energyHist = (this.energyHist || []).concat([{ energy: p.energy, stock: stockEU }]).slice(-4));
+    const win = hist.slice(-3);
+    const sum = p.energy.map((_, k) => win.reduce((a, h) => a + h.energy[k], 0));
+    const before = hist.length > 3 ? hist[0].stock : null;   // stock at the start of the window, once there is one
+    const violations = [];
+    for (let k = 1; k < sum.length; k++) {
+      const drawdown = before ? Math.max(0, before[k - 1] - stockEU[k - 1]) : 0;
+      if (sum[k] > 0 && sum[k] >= sum[k - 1] + drawdown) violations.push(k);
+    }
+    this.pyramidCheck = { round: this.round, energy: sum, rounds: win.length, violations };
+    if (violations.length) {
       this.pyramidViolations = (this.pyramidViolations || 0) + 1;
-      if (this.debug) console.warn('[pyramid] energy did not narrow at ' + p.violations.map(k => p.levels[k].name).join(', ') + ' in round ' + this.round, p.energy);
+      if (this.debug) console.warn('[pyramid] energy did not narrow at ' + violations.map(k => p.levels[k].name).join(', ') + ' over rounds ending ' + this.round, sum);
     }
   };
 
@@ -792,6 +820,8 @@ window.Trophic = window.Trophic || {};
     const n0 = ents.length;
     for (let k = 0; k < n0; k++) if (ents[k].alive) this._reproduce(ents[k]);
     this._decay();
+    this._cyclesTick();
+    this._groundwater();
 
     if (this.ents.some(e => !e.alive)) this.ents = this.ents.filter(e => e.alive);
     if (this.carrion.some(c => !c.alive)) this.carrion = this.carrion.filter(c => c.alive);
@@ -814,16 +844,16 @@ window.Trophic = window.Trophic || {};
     const C = legacy ? B.C_photo : this.mode.C_photo, floor = B.leafFloor;
     const litterRate = legacy ? 0 : B.litterRate;
     const fruiting = this.seasonIdx <= 1;
-    const book = this.pbook;
+    const book = this.pbook, cb = this.cbook, NB = B.nitrogen;
     let captured = 0, heat = 0, stored = 0;
     for (let i = 0; i < NT; i++) {
       const t = this.ptype[i];
       if (!t) continue;
       const P = this.producers[t];
+      const nP = P.nContent;
       const R = legacy || P.resp == null ? B.R_plant : P.resp;
-      const n = this.nutr[i];
       const gg = this.pgGrowth[i], tough = this.pgTough[i];
-      const max = P.max * (0.4 + 0.6 * n) * (1.25 - 0.25 * gg);
+      const max = P.max * (1.25 - 0.25 * gg);
       let e = this.pE[i];
       if (litterRate > 0 && e > 0) {
         // Litterfall: old leaves and stems drop, so a stand at its cap keeps producing to replace them.
@@ -831,25 +861,50 @@ window.Trophic = window.Trophic || {};
         e -= lit;
         this.pE[i] = e;
         this.detr[i] += lit;
+        this.detrN[i] += lit * nP;
         book.litter[t] += lit;
       }
       if (e >= max) continue;
       let leaf = floor + (1 - floor) * Math.min(1, e / P.max);
       if (this.regrow[i] > 0) { this.regrow[i]--; leaf *= 0.3; }
-      const fit = 1 - 0.4 * Math.abs(this.moist[i] - this.pgTol[i]);
+      // Moisture fit (soil water from the water budget) and the producer's temperature envelope.
+      const fit = (1 - 0.4 * Math.abs(this.moist[i] - this.pgTol[i])) * this.envFit[t][(i / N) | 0];
       let cap = L0 * this.shade[i] * C * leaf * P.leaf * this.growthMod * gg * fit * (1 - 0.05 * tough);
+      // Legumes feed their root-nodule bacteria part of their production in exchange for fixed nitrogen.
+      const cost = P.fixer ? NB.legumeCost : 0;
       // Only the edible share of NPP (leaf and fruit) joins the grazeable standing crop. Stems, roots and wood
       // turn over as litter, which is most of why herbivores harvest only 5–30% of NPP.
       const ed = legacy ? 1 : P.edible == null ? B.edibleDefault : P.edible;
-      let npp = cap * (1 - R), store = npp * ed;
-      if (e + store > max) { store = max - e; npp = store / ed; cap = npp / (1 - R); }
+      let npp = cap * (1 - R) * (1 - cost), store = npp * ed;
+      if (e + store > max) { store = max - e; npp = store / ed; cap = npp / ((1 - R) * (1 - cost)); }
+      // Nitrogen: each EU of growth needs N at the producer's C:N ratio. Plants draw 80% of it as nitrate and
+      // 20% as ammonia, and stop growing when the soil runs out. Legumes use soil N when it's there and have their
+      // nodule bacteria fix the shortfall, plus a little extra that leaks to the soil as ammonia.
+      const need = npp * nP;
+      cb.tileTicks++;
+      if (P.fixer) {
+        const fromSoil = Math.min(need, this.no3[i] + this.nh4[i]);
+        this._drawSoilN(i, fromSoil);
+        const short = need - fromSoil;
+        const fixed = short + (npp / (1 - cost)) * NB.legumeLeak;
+        this.nledger.air += fixed; cb.fixLegume += fixed; this.cumCycles.fixed += fixed;
+        if (fixed > short) this._spreadAmmonia(i, fixed - short);
+      } else if (need > 0) {
+        const avail = this.no3[i] + this.nh4[i];
+        if (avail < need) {
+          const k = avail / need;
+          npp *= k; store *= k; cap *= k;
+          cb.nLimitedTicks++;
+        }
+        this._drawSoilN(i, npp * nP);
+      }
       const structure = npp - store;
       captured += cap;
       heat += cap - npp;
       book.gpp[t] += cap;
       book.resp[t] += cap - npp;
       book.npp[t] += npp;
-      if (structure > 0) { this.detr[i] += structure; book.litter[t] += structure; }
+      if (structure > 0) { this.detr[i] += structure; this.detrN[i] += structure * nP; book.litter[t] += structure; }
       if (P.fruit && fruiting && this.fruit[i] < 80) {
         const f = store * B.fruitShare;
         this.fruit[i] += f;
@@ -857,13 +912,37 @@ window.Trophic = window.Trophic || {};
       }
       this.pE[i] = e + store;
       stored += npp;
-      this.nutr[i] = Math.max(0.05, n - store * B.nutrientUse);
     }
     this.ledger.captured += captured;
     this.cumulative.captured += captured;
     this.capturedTick = captured;
     this.ledger.heat += heat;
+    cb.absorbed += captured;   // carbon: each EU of GPP draws its carbon from the air
     this._flowAcc.producer += stored;
+  };
+
+  // Plant uptake: nitrate first (80% of the need), ammonia for the rest, either pool if one runs short.
+  World.prototype._drawSoilN = function (i, need) {
+    if (need <= 0) return;
+    const a = Math.min(this.no3[i], need * B.nitrogen.nitrateShare);
+    this.no3[i] -= a;
+    const b = Math.min(this.nh4[i], need - a);
+    this.nh4[i] -= b;
+    const rest = need - a - b;
+    if (rest > 0) this.no3[i] -= Math.min(this.no3[i], rest);
+  };
+
+  // A legume's surplus fixed nitrogen: half to its own tile as ammonia, half shared with its four neighbours.
+  World.prototype._spreadAmmonia = function (i, n) {
+    const x = i % N, y = (i / N) | 0;
+    let spread = 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= N || yy >= N) continue;
+      this.nh4[yy * N + xx] += n * 0.125;
+      spread += n * 0.125;
+    }
+    this.nh4[i] += n - spread;
   };
 
   // Producer evolution: heavily grazed tiles regrow from a thriving neighbour of the same type, with mutation.
@@ -911,6 +990,8 @@ window.Trophic = window.Trophic || {};
       const build = st.tissueAdult * (g1 - e.grow);
       e.E -= build;
       e.tissue += build;
+      const nb = Math.min(e.nS, build * B.nitrogen.animal);   // new tissue takes its protein from the N store
+      e.nS -= nb; e.nT += nb;
       e.grow = g1;
       const step = Math.floor(e.grow * 10);
       if (step !== e.growStep || e.grow >= 1) { e.growStep = step; this._restat(e); }
@@ -1222,6 +1303,7 @@ window.Trophic = window.Trophic || {};
     e.x += (dx / d) * step;
     e.y += (dy / d) * step;
     e.hx = dx / d; e.hy = dy / d;
+    this._trample(e, step);
     if (!e.sp.transient) { e.x = clamp(e.x, 0.1, N - 0.1); e.y = clamp(e.y, 0.1, N - 0.1); }
     // Swimmers can't haul out: a step onto land is undone and they turn back to open water.
     if (st.swim && !this.isWater(e.x, e.y) && this.isWater(e.px, e.py)) {
@@ -1255,16 +1337,17 @@ window.Trophic = window.Trophic || {};
           const A = B.decomposerA, P = B.decomposerP;
           const amt = Math.min(st.eatRate * (st.ecto ? this.ectoPerf : 1), this.detr[i], room / (A * P));
           if (amt <= 0.01) { e.think = 0; return; }
+          const nIn = this.detrN[i] * (amt / this.detr[i]);
           this.detr[i] -= amt;
-          this.nutr[i] = Math.min(1, this.nutr[i] + amt * B.nutrientReturn);
-          this._digest(e, amt, A, P, 'Detritus', i, 'detritus');
+          this.detrN[i] -= nIn;
+          this._digest(e, amt, A, P, 'Detritus', i, 'detritus', nIn);
         } else if (e.food === 'fruit') {
           const A = Math.min(0.95, st.plantA + B.fruitBonusA);
           const amt = Math.min(st.eatRate * (st.ecto ? this.ectoPerf : 1), this.fruit[i], room / (A * st.P));
           if (amt <= 0.01) { e.think = 0; return; }
           this.fruit[i] -= amt;
           this.pbook.eaten[this.ptype[i]] += amt;
-          this._digest(e, amt, A, st.P, 'Fruit', i, 'producer');
+          this._digest(e, amt, A, st.P, 'Fruit', i, 'producer', amt * this.producers[this.ptype[i]].nContent);
         } else {
           const t = this.ptype[i];
           if (!t) { e.think = 0; return; }
@@ -1275,7 +1358,7 @@ window.Trophic = window.Trophic || {};
           this.pE[i] -= amt;
           this.pbook.eaten[t] += amt;
           if (P.regrowDelay) this.regrow[i] = P.regrowDelay;
-          this._digest(e, amt, st.plantA, st.P, P.name, i, 'producer');
+          this._digest(e, amt, st.plantA, st.P, P.name, i, 'producer', amt * P.nContent);
         }
         break;
       }
@@ -1291,7 +1374,7 @@ window.Trophic = window.Trophic || {};
         if (amt <= 0.05) return;
         this.pE[i] -= amt;
         this.pbook.eaten[t] += amt;
-        this._digest(e, amt, st.plantA, st.P, P.name, i, 'producer');
+        this._digest(e, amt, st.plantA, st.P, P.name, i, 'producer', amt * P.nContent);
         break;
       }
       case 'scavenge': {
@@ -1303,9 +1386,10 @@ window.Trophic = window.Trophic || {};
         const dec = e.sp.level === 'decomposer';
         const A = dec ? B.decomposerA : st.meatA, P = dec ? B.decomposerP : st.P;
         const amt = Math.min(st.eatRate * (st.ecto ? this.ectoPerf : 1), c.E, room / (A * P));
-        c.E -= amt;
-        if (c.E < 0.5) { this.detr[this.tileAt(c.x, c.y)] += c.E; c.E = 0; c.alive = false; }
-        this._digest(e, amt, A, P, c.src || 'Carrion', this.tileAt(e.x, e.y), c.lv || 'carrion');
+        const nIn = c.E > 0 ? c.N * (amt / c.E) : 0;
+        c.E -= amt; c.N -= nIn;
+        if (c.E < 0.5) { const ci = this.tileAt(c.x, c.y); this.detr[ci] += c.E; this.detrN[ci] += c.N; c.E = 0; c.N = 0; c.alive = false; }
+        this._digest(e, amt, A, P, c.src || 'Carrion', this.tileAt(e.x, e.y), c.lv || 'carrion', nIn);
         break;
       }
     }
@@ -1315,8 +1399,10 @@ window.Trophic = window.Trophic || {};
 
   // Ingested food splits into egestion (feces to detritus) and assimilation. In Phase 3 (P = 1) the whole
   // assimilated share is kept and metabolism is charged later as upkeep; Phase 2 burned (1 − P) here.
-  World.prototype._digest = function (e, amt, A, P, src, tile, srcLv) {
+  World.prototype._digest = function (e, amt, A, P, src, tile, srcLv, nIn) {
     const gain = amt * A * P, resp = amt * A * (1 - P), exc = amt * (1 - A);
+    // Nitrogen follows the food: the egested share goes to the soil with the feces, the rest to the N store.
+    if (nIn > 0) { this.detrN[tile] += nIn * (1 - A); this._takeN(e, nIn * A, tile); }
     e.E += gain;
     this.ledger.heat += resp;
     this.detr[tile] += exc;
@@ -1381,8 +1467,8 @@ window.Trophic = window.Trophic || {};
     if (cause === 'k') key = 'k:' + (by >= 0 ? this.species[by].id : 'unknown');
     else if (cause === 'starved') key = 'starved@' + B.seasons[this.seasonIdx].name;
     rs.deaths[key] = (rs.deaths[key] || 0) + 1;
-    const body = e.E + e.tissue;
-    e.E = body; e.tissue = 0;   // the carcass carries body tissue as well as reserves
+    const body = e.E + e.tissue, bodyN = e.nT + e.nS;
+    e.E = body; e.tissue = 0; e.nT = 0; e.nS = 0;   // the carcass carries body tissue as well as reserves
     if (cause === 'starved') rs.starveLoss += e.E;
     else if (cause === 'k') rs.predLoss += e.E;
     else rs.otherLoss += e.E;
@@ -1391,9 +1477,13 @@ window.Trophic = window.Trophic || {};
     if (e.E > 0.5) {
       // A kill passes energy up the grazing chain at the prey's level; a body left by starvation, age or
       // disease feeds the detrital chain, like litter, whoever eats it.
-      c = { id: this.nextId++, x: e.x, y: e.y, E: e.E, alive: true, src: e.sp.name, lv: cause === 'k' ? e.sp.level : 'carrion', mass: e.st.mass };
+      c = { id: this.nextId++, x: e.x, y: e.y, E: e.E, alive: true, src: e.sp.name, lv: cause === 'k' ? e.sp.level : 'carrion', mass: e.st.mass, N: bodyN };
       this.carrion.push(c);
-    } else if (e.E > 0) this.detr[this.tileAt(e.x, e.y)] += e.E;
+    } else {
+      const i = this.tileAt(e.x, e.y);
+      if (e.E > 0) this.detr[i] += e.E;
+      this.detrN[i] += bodyN;
+    }
     e.E = 0;
     return c;
   };
@@ -1458,6 +1548,11 @@ window.Trophic = window.Trophic || {};
     const tissue0 = st.tissueAdult * B.juvenileMass;
     const n = Math.max(1, Math.min(st.litter, Math.floor(give / (B.minYoungEnergy * st.maxE * B.juvenileMass + tissue0)))), each = give / n;
     const tissueEach = Math.min(tissue0, each * 0.6);
+    // Newborns' tissue nitrogen comes from the parents' N stores.
+    const nPool = e.nS + (mate ? mate.nS : 0);
+    e.nS = 0; if (mate) mate.nS = 0;
+    const nEach = Math.min(nPool / n, tissueEach * B.nitrogen.animal);
+    e.nS += nPool - nEach * n;
     const pa = e.g, pb = mate ? mate.g : e.g;
     const rs = this.rstats[sp.idx];
     if (rs.birthMids.length < 500) {
@@ -1468,7 +1563,7 @@ window.Trophic = window.Trophic || {};
     for (let k = 0; k < n; k++) {
       const p = this._randomLand(e.x, e.y, 0.8, st.swim);
       const g = T.Evo.inherit(this, pa, pb, sp, muMult);
-      const c = this.spawn(sp, p[0], p[1], each - tissueEach, g, { grow: B.juvenileMass, tissue: tissueEach, parents: [e.num, mate ? mate.num : e.num], iso: e.iso });
+      const c = this.spawn(sp, p[0], p[1], each - tissueEach, g, { grow: B.juvenileMass, tissue: tissueEach, nT: nEach, parents: [e.num, mate ? mate.num : e.num], iso: e.iso });
       c.hp = c.st.maxHp * c.st.youngHp;
       c.home = e.home;
       if (c.E > c.st.maxE) { this.detr[this.tileAt(c.x, c.y)] += c.E - c.st.maxE; c.E = c.st.maxE; }
@@ -1481,33 +1576,45 @@ window.Trophic = window.Trophic || {};
     for (const c of this.carrion) {
       if (!c.alive) continue;
       const i = this.tileAt(c.x, c.y);
-      const d = c.E * B.carrionDecay;
-      c.E -= d;
-      this.detr[i] += d;
-      if (c.E < 0.5) { this.detr[i] += c.E; c.E = 0; c.alive = false; }
+      const d = c.E * B.carrionDecay, dn = c.N * B.carrionDecay;
+      c.E -= d; c.N -= dn;
+      this.detr[i] += d; this.detrN[i] += dn;
+      if (c.E < 0.5) { this.detr[i] += c.E; this.detrN[i] += c.N; c.E = 0; c.N = 0; c.alive = false; }
     }
-    let heat = 0;
-    const k = B.detritusDecay, back = B.nutrientReturn;
+    // Soil microbes respire detritus and release its nitrogen as ammonia (ammonification). Their numbers ride on
+    // the decomposer guild: with the guild gone, decomposition slows to a crawl and soil nitrogen drains away.
+    let dec = 0;
+    for (const sp of this.species) if (sp.level === 'decomposer') dec += this.popCount[sp.idx] || 0;
+    const SB = B.soil, wet = B.water.waterlogged;
+    const microbes = this.decompRef > 0 ? SB.microbeFloor + (1 - SB.microbeFloor) * Math.min(1, dec / this.decompRef) : 1;
+    const warm = 0.3 + 0.7 * clamp(this.airTemp / 25, 0, 1.2);   // warming speeds decomposition
+    const k0 = B.detritusDecay * microbes * warm;
+    let heat = 0, peat = 0;
     for (let i = 0; i < NT; i++) {
       const dd = this.detr[i];
-      if (dd > 0) {
-        const d = dd * k;
-        this.detr[i] = dd - d;
-        heat += d;
-        const n = this.nutr[i] + d * back;
-        this.nutr[i] = n > 1 ? 1 : n;
-      }
-      this.nutr[i] += (B.nutrientBaseline - this.nutr[i]) * B.nutrientWeathering;
+      if (dd <= 0) continue;
+      // Waterlogged ground decomposes slowly, and part of what escapes decomposition becomes peat.
+      const soggy = this.terrain[i] === 0 && this.sw[i] > wet;
+      const d = dd * (soggy ? k0 * SB.peatSlow : k0);
+      const dn = this.detrN[i] * (d / dd);
+      this.detr[i] = dd - d;
+      this.detrN[i] -= dn;
+      this.nh4[i] += dn;
+      if (soggy) { const pe = d * SB.peatShare; this.peat[i] += pe; peat += pe; heat += d - pe; }
+      else heat += d;
     }
     this.ledger.heat += heat;
+    this.cbook.peat += peat;
+    this.cumCycles.peat += peat;
     for (const e of this.ents) {
       if (e.alive && e.sp.transient && e.x > N - 0.3) {
         e.alive = false;
         this.ledger.exported += e.E + e.tissue;
+        this.nledger.exported += e.nT + e.nS;
         const rs = this.rstats[e.sp.idx];
         rs.deaths.emigrated = (rs.deaths.emigrated || 0) + 1;
         rs.otherLoss += e.E + e.tissue;
-        e.E = 0; e.tissue = 0;
+        e.E = 0; e.tissue = 0; e.nT = 0; e.nS = 0;
       }
     }
   };
@@ -1516,7 +1623,7 @@ window.Trophic = window.Trophic || {};
 
   World.prototype.totalPools = function () {
     let s = 0;
-    for (let i = 0; i < NT; i++) s += this.pE[i] + this.fruit[i] + this.detr[i];
+    for (let i = 0; i < NT; i++) s += this.pE[i] + this.fruit[i] + this.detr[i] + this.peat[i];
     for (const e of this.ents) if (e.alive) s += e.E + e.tissue;
     for (const c of this.carrion) if (c.alive) s += c.E;
     return s;
@@ -1537,7 +1644,7 @@ window.Trophic = window.Trophic || {};
     let sp = this.speciesById(def.id);
     if (!sp) { sp = this.addSpecies(def, false); sp.originRound = this.round; sp.arrival = true; }
     const spawned = this.spawnGroup(sp, count, center, opts);
-    for (const e of spawned) this.ledger.imported += e.E + e.tissue;
+    for (const e of spawned) { this.ledger.imported += e.E + e.tissue; this.nledger.imported += e.nT + e.nS; }
     if (!sp.initialPop) sp.initialPop = count;
     this.updateMeans(sp);
     return sp;
@@ -1586,8 +1693,9 @@ window.Trophic = window.Trophic || {};
       nutr: Array.from(this.nutr, r3), moist: Array.from(this.moist, r3), elev: Array.from(this.elev, r3),
       pgGrowth: Array.from(this.pgGrowth, r3), pgTough: Array.from(this.pgTough, r3), pgTol: Array.from(this.pgTol, r3),
       genomes: T.b64.encode(pool),
-      ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, e.iso, r2(e.tissue)]),
-      carrion: this.carrion.filter(c => c.alive).map(c => [r2(c.x), r2(c.y), r2(c.E), c.src, c.lv]),
+      ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, e.iso, r2(e.tissue), r3(e.nT), r3(e.nS)]),
+      carrion: this.carrion.filter(c => c.alive).map(c => [r2(c.x), r2(c.y), r2(c.E), c.src, c.lv, r3(c.N)]),
+      cycles: this._cyclesState(),
     };
   };
 
@@ -1607,6 +1715,7 @@ window.Trophic = window.Trophic || {};
     w.terrain.set(s.terrain); w.ptype.set(s.ptype); w.pE.set(s.pE); w.fruit.set(s.fruit); w.detr.set(s.detr); w.nutr.set(s.nutr);
     w.moist.set(s.moist); w.elev.set(s.elev); w.pgGrowth.set(s.pgGrowth); w.pgTough.set(s.pgTough); w.pgTol.set(s.pgTol);
     w._computeShade();
+    w._restoreCycles(s.cycles);
     const pool = T.b64.decode(s.genomes);
     const ng = s.ng || NG;
     s.ents.forEach((a, k) => {
@@ -1614,13 +1723,16 @@ window.Trophic = window.Trophic || {};
       g.set(pool.subarray(k * ng, k * ng + Math.min(ng, NG)));
       const sp = w.species[a[0]];
       const counter = sp.counter;
-      const e = w.spawn(sp, a[1], a[2], a[3], g, { grow: a[7], parents: a[12], iso: a[13], tissue: a[14] });
+      const e = w.spawn(sp, a[1], a[2], a[3], g, { grow: a[7], parents: a[12], iso: a[13], tissue: a[14], nT: a[15] });
+      if (a[16] != null) e.nS = a[16];
       sp.counter = counter;
       e.hp = a[4]; e.breedCd = a[5]; e.home = a[6]; e.age = a[8]; e.life = a[9]; e.num = a[10]; e.offspring = a[11];
     });
-    for (const c of s.carrion) w.carrion.push({ id: w.nextId++, x: c[0], y: c[1], E: c[2], src: c[3], lv: c[4], alive: true });
+    for (const c of s.carrion) w.carrion.push({ id: w.nextId++, x: c[0], y: c[1], E: c[2], src: c[3], lv: c[4], N: c[5] != null ? c[5] : c[2] * 0.2 * B.nitrogen.animal, alive: true });
+    if (w.decompRef == null) w.decompRef = w.species.filter(sp => sp.level === 'decomposer').reduce((a, sp) => a + (sp.initialPop || 0), 0);
     w.updateMeans();
     w.ledger.initial = w.totalPools();
+    w.nledger.initial = w.totalNitrogen();
     w.beginRound(w.round);
     return w;
   };
@@ -1646,6 +1758,7 @@ window.Trophic = window.Trophic || {};
       w.pgGrowth[i] = 1; w.pgTough[i] = P ? P.tough : 0; w.pgTol[i] = 0.5;
     }
     w._computeShade();
+    w._restoreCycles(null);
     for (const a of s.ents) {
       const sp = w.species[a[0]];
       const e = w.spawn(sp, a[1], a[2], a[3], T.sampleGenome(sp.genome, w.rng, B.founderSigma), { grow: 1 });

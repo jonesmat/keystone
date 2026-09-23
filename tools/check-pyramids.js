@@ -38,20 +38,20 @@ for (const W of WORLDS) {
     for (let r = 1; r <= opt.rounds; r++) {
       while (!w.roundOver()) w.tick();
       const p = T.Energy.pyramids(w);
+      w.updateMeans();
+      w.beginRound(r + 1);   // runs the world's own end-of-round assertion (energy over the last 3 rounds)
       if (r >= 2) {   // round 1 is warm-up
         rounds++;
-        if (p.violations.length) violations++;
+        if (w.pyramidCheck.violations.length) violations++;
         for (const kind of ['numbers', 'biomass']) if (p[kind][1] > p[kind][0]) invCount[kind]++;
         if (!sample && r === 4) sample = p;
       }
-      w.updateMeans();
-      w.beginRound(r + 1);
     }
   }
   console.log(W.name + ' · ' + opt.seeds + ' seeds × ' + opt.rounds + ' rounds (rounds 2+)');
   const ok = violations === 0;
   if (!ok) failures++;
-  console.log('  ' + (ok ? 'PASS' : 'FAIL') + '  energy narrows at every level in every round' + (ok ? '' : ' (' + violations + ' of ' + rounds + ' rounds failed)'));
+  console.log('  ' + (ok ? 'PASS' : 'FAIL') + '  energy narrows at every level in every round (3-round flow, net of stock the level below lost)' + (ok ? '' : ' (' + violations + ' of ' + rounds + ' rounds failed)'));
   for (const kind of ['numbers', 'biomass']) {
     const share = rounds ? invCount[kind] / rounds : 0;
     const want = W[kind];

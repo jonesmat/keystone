@@ -85,6 +85,7 @@ window.Trophic = window.Trophic || {};
   G.newSeed = function () { G.setSeed(randSeed()); };
   G.setBiome = function (b) { G.setup.biome = b; if (G.setup.mode === 'generated') G.regenerate(); G.renderNewWorld(); };
   G.setDifficulty = function (d) { G.setup.difficulty = d; G.renderNewWorld(); };
+  G.setClimateTrend = function (on) { G.setup.climateTrend = !!on; };
 
   G.cancelGen = function () { G.genToken = (G.genToken || 0) + 1; };
 
@@ -161,7 +162,7 @@ window.Trophic = window.Trophic || {};
     founder.genome = new Float32Array(G.currentFounder().genome);
     const seed = st.mode === 'generated' ? st.worldSeed || st.seed : st.seed;
     const biome = B.biomes[st.mode === 'generated' ? st.biome : st.mode === 'channel' ? 'channel' : 'meadow'];
-    const world = T.createWorld({ seed, roster: st.roster, player: founder, biome, difficulty: diff, debug: G.settings.debug });
+    const world = T.createWorld({ seed, roster: st.roster, player: founder, biome, difficulty: diff, debug: G.settings.debug, climateTrend: !!st.climateTrend });
     G.world = world;
     let mp = diff.startMP;
     if (st.ftab === 'roll') mp += B.rolledFounderMP;
@@ -390,6 +391,7 @@ window.Trophic = window.Trophic || {};
     const w = G.world, act = G.run.activeEvents.filter(a => a.left > 0).map(a => a.id);
     w.eventLight = (act.includes('drought') ? 0.7 : 1) * (act.includes('volcanic') ? 0.5 : 1);
     w.growthMod = act.includes('bloom') ? 1.5 : 1;
+    w.rainMod = act.includes('drought') ? 0.3 : 1;
     w.ectoSlowAll = act.includes('volcanic');
   };
 
@@ -514,7 +516,7 @@ window.Trophic = window.Trophic || {};
     const diff = B.difficulties[run.difficulty];
     G.state = 'report';
     G.placing = false;
-    for (const e of w.ents) if (e.alive && e.sp.transient) { w.ledger.exported += e.E + e.tissue; e.E = 0; e.tissue = 0; e.alive = false; }
+    for (const e of w.ents) if (e.alive && e.sp.transient) { w.ledger.exported += e.E + e.tissue; w.nledger.exported += e.nT + e.nS; e.E = 0; e.tissue = 0; e.nT = 0; e.nS = 0; e.alive = false; }
     w.ents = w.ents.filter(e => e.alive);
     w.updateMeans();
     const p = w.player;

@@ -31,8 +31,8 @@ window.Trophic = window.Trophic || {};
       note: 'Ground cover that regrows quickly. Low energy density; shaded out by tall plants.' },
     { id: 'reed',  name: 'Reedstalk', kind: 'tall',   max: 400,  resp: 0.45, edible: 0.30, height: 2, leaf: 1.10, regrowDelay: 80, fruit: false, tough: 0.8, moist: 0.75, color: [150, 172, 96],
       note: 'Grows tall and shades neighbours. Slow to regrow after grazing.' },
-    { id: 'bloom', name: 'Bloomvine', kind: 'vine',   max: 250,  resp: 0.50, edible: 0.35, height: 1, leaf: 1.00, regrowDelay: 0,  fruit: true,  tough: 0.4, moist: 0.55, color: [158, 190, 122],
-      note: 'Drops fruit in spring and summer (easier to digest: A +0.2).' },
+    { id: 'bloom', name: 'Bloomvine', kind: 'vine',   max: 250,  fixer: true, resp: 0.50, edible: 0.35, height: 1, leaf: 1.00, regrowDelay: 0,  fruit: true,  tough: 0.4, moist: 0.55, color: [158, 190, 122],
+      note: 'A legume vine: root nodules fix nitrogen. Drops fruit in spring and summer (easier to digest: A +0.2).' },
     { id: 'iron',  name: 'Ironbark',  kind: 'woody',  max: 1500, resp: 0.55, edible: 0.30, height: 3, leaf: 1.20, regrowDelay: 40, fruit: false, tough: 2.0, moist: 0.45, color: [104, 146, 88],
       note: 'Huge energy store behind tough bark. Slow to eat unless you are big.' },
   ];
