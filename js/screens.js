@@ -17,10 +17,12 @@ window.Trophic = window.Trophic || {};
     document.querySelectorAll('#mode-tabs button').forEach(b => b.addEventListener('click', () => G.setMode(b.dataset.mode)));
     document.querySelectorAll('#founder-tabs button').forEach(b => b.addEventListener('click', () => G.setFounderTab(b.dataset.ftab)));
     $('nw-new').addEventListener('click', () => G.newSeed());
-    $('nw-seed').addEventListener('change', e => G.setSeed(parseInt(e.target.value, 10) >>> 0));
+    $('nw-seed').addEventListener('change', e => G.setSeedString(e.target.value));
     $('nw-biome').addEventListener('change', e => G.setBiome(e.target.value));
     $('nw-begin').addEventListener('click', () => G.beginRun());
     $('nw-climate').addEventListener('change', e => G.setClimateTrend(e.target.checked));
+    $('nw-eco').addEventListener('change', e => G.setEcoregion(e.target.value));
+    $('nw-scen').addEventListener('change', e => G.setScenario(e.target.value));
     $('nw-reroll').addEventListener('click', () => G.rerollFounder());
     $('btn-continue').addEventListener('click', () => G.continueRun());
     // Generated worlds are land rosters; the aquatic Open Channel is listed but only reachable from its own tab.
@@ -50,12 +52,29 @@ window.Trophic = window.Trophic || {};
     $('continue-box').hidden = !save;
     if (save) {
       const r = save.run;
-      $('continue-info').textContent = '— ' + r.speciesName + ', round ' + r.round + ' · ' + (r.mode === 'generated' ? 'generated world' : r.mode === 'channel' ? 'Open Channel' : 'Temperate Meadow') + ' · ' + B.difficulties[r.difficulty].name;
+      $('continue-info').textContent = '— ' + r.speciesName + ', round ' + r.round + ' · ' + (r.mode === 'generated' ? 'generated world' : r.mode === 'channel' ? 'Open Channel' : r.mode === 'catalog' ? r.worldName : 'Temperate Meadow') + ' · ' + B.difficulties[r.difficulty].name;
     }
     const seedIn = $('nw-seed');
     if (document.activeElement !== seedIn) seedIn.value = st.seed;
     $('nw-biome').value = st.biome;
     $('nw-biome').disabled = st.mode !== 'generated';
+    // Real ecoregion worlds: ecoregion and scenario pickers, and the seed to share.
+    const cat = st.mode === 'catalog';
+    $('nw-biome-field').hidden = cat;
+    $('nw-eco-field').hidden = !cat;
+    $('nw-scen-field').hidden = !cat;
+    seedIn.maxLength = cat ? 32 : 10;
+    if (cat) {
+      const eco = $('nw-eco'), scen = $('nw-scen');
+      eco.replaceChildren(...(T.CATALOG_INDEX || []).map(e => el('option', { value: e.code, text: e.code + ' ' + e.name + ' · ' + e.species + ' species' })));
+      eco.value = st.ecoregion;
+      const here = T.SCENARIOS.filter(s => s.ecoregion === st.ecoregion);
+      scen.replaceChildren(...here.map(s => el('option', { value: s.id, text: s.name })), el('option', { value: '', text: 'Sandbox (no goals)' }));
+      scen.value = st.scenario || '';
+    }
+    const share = $('nw-share');
+    share.hidden = !(cat && st.roster && st.roster.seedString);
+    if (!share.hidden) share.textContent = 'Share this world: ' + st.roster.seedString + ' (paste it into the seed box)';
     S.renderStability();
     renderRoster(st.roster, st.stability.state === 'running');
     renderFounder();
@@ -70,7 +89,16 @@ window.Trophic = window.Trophic || {};
     sb.className = 'stability';
     sb.innerHTML = '';
     const s = st.stability;
-    if (st.mode === 'meadow' || st.mode === 'channel') {
+    if (s.catalog || (st.mode === 'catalog' && s.state !== 'running')) {
+      const r = st.roster, n = r.producers.length + r.species.length;
+      const ok = s.state === 'pass';
+      sb.className = ok ? 'stability' : 'stability fail';
+      sb.append(el('div', { class: 'row' }, el('b', { text: s.state === 'running' ? 'Testing cast…' : ok ? 'Stability test passed' : 'Kept the last draw' }),
+        el('span', { text: n + ' real species · draw ' + s.attempt })),
+        el('div', { class: 'track' }, el('i', { style: { width: s.state === 'running' ? Math.round((s.progress || 0) * 100) + '%' : '100%' } })),
+        el('span', { class: 'caption', text: s.state === 'running' ? 'Round ' + s.round + ' of 5' + (s.last ? ' · redrawing slots after: ' + s.last : '') :
+          ok ? r.pool.length + ' species waiting in the regional pool' : s.last || 'Try another seed' }));
+    } else if (st.mode === 'meadow' || st.mode === 'channel') {
       const n = st.roster.producers.length + st.roster.species.length;
       sb.append(el('div', { class: 'row' }, el('b', { text: 'Hand-authored roster' }), el('span', { text: n + ' species' })),
         el('div', { class: 'track' }, el('i', { style: { width: '100%' } })), el('span', { class: 'caption', text: 'Individuals still vary and evolve' }));
@@ -96,10 +124,13 @@ window.Trophic = window.Trophic || {};
     const nC = roster.species.length, nP = roster.producers.length;
     $('nw-roster-title').textContent = 'Roster · ' + nC + ' consumers, ' + nP + ' producers' + (pending ? ' · testing' : '');
     const hueTxt = (h, p) => 'hue ' + (h >= 0 ? '+' : '−') + Math.abs(h || 0) + '° · ' + (p || 'plain');
-    const rows = [['producer', roster.producers.map(p => ({ name: p.name, level: 'producer', hue: p.hue, sub: hueTxt(p.hue, p.pattern) }))]];
+    // Real species: scientific name, and whether it's non-native, at risk or waiting in the regional pool.
+    const pool = new Set(roster.pool || []);
+    const realTxt = x => x.sci + (x.native === false ? ' · non-native' : '') + (x.iucn && !['LC', 'DD', 'NE'].includes(x.iucn) ? ' · IUCN ' + x.iucn : '') + (pool.has(x.id) ? ' · regional pool' : '');
+    const rows = [['producer', roster.producers.map(p => ({ name: p.name, level: 'producer', hue: p.hue, sub: p.sci ? realTxt(p) : hueTxt(p.hue, p.pattern) }))]];
     for (const lv of ['herbivore', 'omnivore', 'carnivore1', 'carnivore2', 'decomposer']) {
       const list = roster.species.filter(x => x.level === lv);
-      if (list.length) rows.push([lv, list.map(x => ({ name: x.name, level: lv, hue: x.hue, sub: hueTxt(x.hue, x.pattern || T.COAT_WORDS[Math.round((x.genome instanceof Float32Array ? x.genome[G_.coat] : x.genome.coat) || 0)]) }))]);
+      if (list.length) rows.push([lv, list.map(x => ({ name: x.name, level: lv, hue: x.hue, sub: x.sci ? realTxt(x) : hueTxt(x.hue, x.pattern || T.COAT_WORDS[Math.round((x.genome instanceof Float32Array ? x.genome[G_.coat] : x.genome.coat) || 0)]) }))]);
     }
     for (const [lv, items] of rows) {
       box.append(el('div', { class: 'roster-row' }, el('span', { class: 'lv', style: { color: T.speciesColor(lv, 0, -0.25) }, text: T.LEVELS[lv].name }),
@@ -479,7 +510,7 @@ window.Trophic = window.Trophic || {};
   S.renderPhylogeny = function (selId) {
     const run = G.run, w = G.world, ph = run.phylo;
     const R = Math.max(1, ph.lastRound);
-    $('ph-sub').textContent = '· ' + (run.mode === 'generated' ? 'Generated world' : run.mode === 'channel' ? 'Open Channel' : 'Temperate Meadow') + ' · rounds 1–' + R;
+    $('ph-sub').textContent = '· ' + (run.mode === 'generated' ? 'Generated world' : run.mode === 'channel' ? 'Open Channel' : run.mode === 'catalog' ? run.worldName : 'Temperate Meadow') + ' · rounds 1–' + R;
     const recs = Object.values(ph.species);
     const splits = recs.filter(r => r.parentId).length, ext = recs.filter(r => r.extinct).length;
     $('ph-stats').innerHTML = '<b>' + (recs.length + Object.keys(ph.producers).length) + '</b> species seen · <b>' + splits + '</b> split' + (splits === 1 ? '' : 's') + ' · <b>' + ext + '</b> extinct';

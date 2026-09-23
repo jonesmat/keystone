@@ -169,6 +169,7 @@ Trophic.BALANCE = {
   edibleDefault: 0.33,      // share of NPP grown as grazeable leaf and fruit; the rest (stems, roots, wood) drops as litter
   litterRate: 0.0005,       // share of standing crop shed as litter per tick, so uneaten NPP feeds decomposers
   bodyTemp: 38,             // endotherm body temperature, °C
+  insulationRef: 28,        // body-to-air difference (°C) at the annual mean that thermoCoef was tuned for (the Meadow, 10 °C)
   thermoCoef: 0.009,        // c_thermo in U = c × M^0.67 × max(0, T_body − T_air), before upkeepScale (tuned by tools/check-energy.js)
   metabScale: 2.9,          // time-based metabolism that replaces the per-meal P (field metabolic rate)
   levelMetab: { herbivore: 1.0, omnivore: 1.05, carnivore1: 1.0, carnivore2: 0.3, decomposer: 1.0 },   // predators' hunting cost
@@ -255,9 +256,14 @@ Trophic.BALANCE = {
     hungryAt: 0.25,         // hungry tiles below this reserve share send dispersers looking for food
     disperse: 0.05,         // share of a tile's individuals dispersing per update
     oldAt: 0.55,            // share of lifespan spent as a breeding adult before post-reproductive age
-    seedBlobs: [3, 6], blobRadius: [2, 5],
+    seedBlobs: [8, 14], blobRadius: [3, 6],   // small taxa start widespread, so the animals that eat them can find them
     groupRadius: [2, 6],    // vertebrate groups: tiles within this of a member (by roam) make up the group's region
   },
+
+  // Catalog worlds: individual vertebrates at the start, shared out by trophic level (smaller species get more).
+  // About what the 64 × 64 map's producers carry at the current energetics; Populations are counted separately.
+  vertebrateBudget: 280,
+  budgetShare: { herbivore: 0.62, omnivore: 0.23, carnivore1: 0.12, carnivore2: 0.03 },
 
   // Pyramids (Phase 3). Standing crop is shown as g/m² by treating a tile as a 1 m² sample plot of its ground
   // or water, at 1 g dry weight per EU. Plant counts come from T.PRODUCER_KINDS[kind].perTile.

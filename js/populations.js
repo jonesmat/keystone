@@ -216,15 +216,47 @@ window.Trophic = window.Trophic || {};
     g.E[i] = g.Tt[i] = g.Nn[i] = 0;
   };
 
-  // Feed a tile's Population from the food on that tile: detritus for decomposers, then plants and fruit it eats.
+  // Feed a tile's Population: from its own tile first, then from nearby tiles (flying insects range 2 tiles,
+  // walkers 1). Food is detritus for decomposers, the plants and fruit (flowers) it eats, and small prey Populations.
   W._popFeed = function (sp, i, demand, decomp) {
+    let left = this._popFeedAt(sp, i, i, demand, decomp);
+    if (left <= 0.01) return;
+    const N = this.N, x = i % N, y = (i / N) | 0, r = sp.stats.flight ? 2 : 1;
+    for (let k = 0; k < 4 && left > 0.01; k++) {
+      const xx = x + this.rng.int(2 * r + 1) - r, yy = y + this.rng.int(2 * r + 1) - r;
+      if (xx < 0 || yy < 0 || xx >= N || yy >= N) continue;
+      const j = yy * N + xx;
+      if (j !== i) left = this._popFeedAt(sp, i, j, left, decomp);
+    }
+  };
+
+  // Eat from tile j on behalf of the Population on tile i; returns the demand still unmet.
+  W._popFeedAt = function (sp, i, j, demand, decomp) {
     const st = sp.stats;
     let left = demand;
+    const prey = this.popPrey && this.popPrey[sp.idx];
+    if (prey && prey.length && st.canMeat) {
+      for (const b of prey) {
+        if (left <= 0.01) break;
+        const pg = b.grid, body = pg.E[j] + pg.Tt[j];
+        if (body <= 0.5) continue;
+        const amt = Math.min(left, body * 0.5);
+        const f = amt / body, killed = (pg.nJ[j] + pg.nA[j] + pg.nO[j]) * f, nIn = pg.Nn[j] * f;
+        for (const k of ['nJ', 'nA', 'nO', 'E', 'Tt', 'Nn']) pg[k][j] -= pg[k][j] * f;
+        const rs = this.rstats[b.idx];
+        rs.predLoss += amt;
+        addCount(b, 'k:' + sp.id, killed, rs.deaths, 'k:' + sp.id);
+        this._popBook(sp, i, amt, st.meatA, b.name, b.level, nIn);
+        left -= amt;
+      }
+    }
+    const home = i;   // meals are booked to the eater's tile
+    i = j;            // plant, fruit and detritus come from tile j
     if ((decomp || sp.foods.has('detritus')) && this.detr[i] > 0.01) {
       const amt = Math.min(left, this.detr[i]);
       const nIn = this.detrN[i] * (amt / this.detr[i]);
       this.detr[i] -= amt; this.detrN[i] -= nIn;
-      this._popBook(sp, i, amt, B.decomposerA, 'Detritus', 'detritus', nIn);
+      this._popBook(sp, home, amt, B.decomposerA, 'Detritus', 'detritus', nIn);
       left -= amt;
     }
     const t = this.ptype[i];
@@ -235,7 +267,7 @@ window.Trophic = window.Trophic || {};
         const amt = Math.min(left, avail);
         this.pE[i] -= amt;
         this.pbook.eaten[t] += amt;
-        this._popBook(sp, i, amt, st.plantA, P.name, 'producer', amt * P.nContent);
+        this._popBook(sp, home, amt, st.plantA, P.name, 'producer', amt * P.nContent);
         left -= amt;
       }
     }
@@ -243,8 +275,10 @@ window.Trophic = window.Trophic || {};
       const amt = Math.min(left, this.fruit[i]);
       this.fruit[i] -= amt;
       this.pbook.eaten[t] += amt;
-      this._popBook(sp, i, amt, Math.min(0.95, st.plantA + B.fruitBonusA), 'Fruit', 'producer', amt * this.producers[t].nContent);
+      this._popBook(sp, home, amt, Math.min(0.95, st.plantA + B.fruitBonusA), 'Fruit', 'producer', amt * this.producers[t].nContent);
+      left -= amt;
     }
+    return left;
   };
 
   // Book one meal for a Population, exactly as _digest does for an individual.

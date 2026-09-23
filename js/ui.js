@@ -167,7 +167,7 @@ window.Trophic = window.Trophic || {};
   UI.updateHUD = function () {
     const w = G.world, run = G.run, p = w.player;
     if (!p) return;
-    $('tb-biome').textContent = run.mode === 'generated' ? 'Generated · ' + B.biomes[run.biome].name : run.mode === 'channel' ? 'Open Channel' : 'Temperate Meadow';
+    $('tb-biome').textContent = run.mode === 'generated' ? 'Generated · ' + B.biomes[run.biome].name : run.mode === 'channel' ? 'Open Channel' : run.mode === 'catalog' ? run.worldName : 'Temperate Meadow';
     $('tb-round').textContent = 'Round ' + run.round;
     $('tb-of').textContent = 'of ' + B.maxRounds + ' · Simulate';
     // season bar

@@ -373,15 +373,17 @@ window.Trophic = window.Trophic || {};
   // ---------- stability test ----------
 
   // Runs a roster headless (no player) for 5 rounds. step(budgetMs) advances it; returns true when finished.
-  Gen.StabilityTest = function (roster, seed, biome) {
+  Gen.StabilityTest = function (roster, seed, biome, rounds) {
     this.world = T.createWorld({ seed, roster, player: null, biome });
     this.round = 1;
-    this.rounds = 5;
+    this.rounds = rounds || 5;
+    this.failedIds = [];
     this.done = false;
     this.pass = false;
     this.reason = '';
     this.startProd = this.world.producerBiomass();
-    this.levels = new Set(roster.species.map(s => s.level));
+    // Species waiting in the regional pool (startPop 0) aren't expected on the map yet.
+    this.levels = new Set(roster.species.filter(s => s.startPop !== 0).map(s => s.level));
   };
   Gen.StabilityTest.prototype.progress = function () {
     return Math.min(1, ((this.round - 1) * B.roundTicks + this.world.roundTick) / (this.rounds * B.roundTicks));
@@ -405,13 +407,19 @@ window.Trophic = window.Trophic || {};
     const w = this.world, pops = w.countPops().count;
     const alive = {};
     w.species.forEach((s, i) => { if (pops[i] > 0) alive[s.level] = true; });
+    // For slot-level redraws: every species that started on the map and is now gone.
+    this.failedIds = w.species.filter((s, i) => pops[i] === 0 && s.initialPop > 0).map(s => s.id);
     for (const lv of this.levels) if (!alive[lv]) return T.LEVELS[lv].name.toLowerCase() + ' went extinct in round ' + this.round;
     if (w.producerBiomass() < 0.3 * this.startProd) return 'producers fell below 30% in round ' + this.round;
     // Dominance is judged by consumer biomass (EU), since small r-strategists are naturally the most numerous.
     const en = w.countPops().energy;
     let cons = 0, max = 0, maxName = '';
     w.species.forEach((s, i) => { if (s.level !== 'decomposer') { cons += en[i]; if (en[i] > max) { max = en[i]; maxName = s.name; } } });
-    if (cons > 0 && max > B.dominanceLimit * cons) return maxName + ' took over ' + Math.round((100 * max) / cons) + '% of consumer biomass';
+    if (cons > 0 && max > B.dominanceLimit * cons) {
+      const dom = w.species.find(s => s.name === maxName);
+      if (dom) this.failedIds.push(dom.id);
+      return maxName + ' took over ' + Math.round((100 * max) / cons) + '% of consumer biomass';
+    }
     return null;
   };
 

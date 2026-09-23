@@ -148,7 +148,10 @@ window.Trophic = window.Trophic || {};
     this.biomeLight = this.biome.light;
     this.mode = B.modes[opts.mode || B.energyMode] || B.modes.game;
     this.airTemp = this.biome.tMean == null ? 10 : this.biome.tMean;
-    this.thermoDT = Math.max(0, B.bodyTemp - this.airTemp) * this.mode.thermoScale;
+    // Endotherms are insulated for the climate they live in: the cost per °C is normalised so an animal of a cold
+    // ecoregion pays at its annual mean what a Meadow animal pays at the Meadow's. Later warming still counts.
+    this.insulation = B.insulationRef / Math.max(10, B.bodyTemp - (this.biome.tMean == null ? 10 : this.biome.tMean));
+    this.thermoDT = Math.max(0, B.bodyTemp - this.airTemp) * this.mode.thermoScale * this.insulation;
     this._ectoPerf();
     this.eventLight = 1.0;
     this.growthMod = 1.0;
@@ -232,7 +235,8 @@ window.Trophic = window.Trophic || {};
     w.setProducers(opts.roster.producers);
     w._generateTerrain();
     w._initCycles(true);
-    for (const def of opts.roster.species) w.addSpecies(def, false).mu = diff.npcMu;
+    // Real (catalog) species have fixed traits, as Phase 3 intends: they don't mutate.
+    for (const def of opts.roster.species) w.addSpecies(def, false).mu = def.catalogKey ? 0 : diff.npcMu;
     if (opts.player) w.player = w.addSpecies(opts.player, true);
     w._populate();
     for (const sp of w.species) sp.initialPop = w.countPops().count[sp.idx];
@@ -269,6 +273,9 @@ window.Trophic = window.Trophic || {};
       behavior: def.behavior || '', weakness: def.weakness || '', note: def.note || '',
       mu: def.mu || 1, counter: def.counter || 0, pressure: [], pressureCut: {}, focus: {}, splitStreak: 0,
       stats: null, foods: null, preyLevels: null, spriteKey: '', extinctRound: null,
+      // Catalog species (Phase 3): the real species behind the definition.
+      meta: def.meta || (def.catalogKey ? { sci: def.sci, native: def.native, iucn: def.iucn, catalogKey: def.catalogKey, taxon: def.taxon,
+        roles: def.roles, massKg: def.massKg, slot: def.slot } : null),
     };
     this.species.push(sp);
     this.refreshSpecies(sp);
@@ -412,6 +419,13 @@ window.Trophic = window.Trophic || {};
     const choose = (kind, m) => {
       const list = byKind[kind];
       if (!list) return null;
+      if (list.length > 1 && list.some(p => p.share != null)) {
+        // Catalog worlds: several species of a kind share its tiles, by their starting share and moisture fit.
+        const ws = list.map(p => (p.share == null ? 1 : p.share) * Math.exp(-8 * Math.pow((p.moist == null ? 0.5 : p.moist) - m, 2)));
+        let r = rng.next() * ws.reduce((a, b) => a + b, 0), k = 0;
+        while (k < list.length - 1 && (r -= ws[k]) > 0) k++;
+        return list[k];
+      }
       let best = list[0], bd = Infinity;
       for (const p of list) { const d = Math.abs((p.moist == null ? 0.5 : p.moist) - m); if (d < bd) { bd = d; best = p; } }
       return best;
@@ -443,6 +457,8 @@ window.Trophic = window.Trophic || {};
       if (!P) { this.ptype[i] = 0; continue; }
       this.ptype[i] = P.idx;
       this.pE[i] = P.max * rng.range(0.45, 0.8);
+      // Last season's seeds and dried fruit carry seed-eaters through to this year's flowering (catalog worlds).
+      if (P.fruit && P.catalogKey) this.fruit[i] = rng.range(10, 40);
       this.pgGrowth[i] = clamp(1 + rng.gauss() * 0.05, 0.6, 1.4);
       this.pgTough[i] = clamp((P.tough || 0.3) + rng.gauss() * 0.1, 0, 3);
       this.pgTol[i] = clamp(0.5 * (P.moist == null ? 0.5 : P.moist) + 0.5 * m + rng.gauss() * 0.05, 0, 1);
@@ -812,7 +828,7 @@ window.Trophic = window.Trophic || {};
     this.seasonIdx = Math.min(3, Math.floor(this.roundTick / (B.roundTicks / 4)));
     this.lightFrac = this.seasonLight(this.seasonIdx) * this.biomeLight * this.eventLight * this.climate;
     this.airTemp = this.seasonTemp(this.seasonIdx);
-    this.thermoDT = Math.max(0, B.bodyTemp - this.airTemp) * this.mode.thermoScale;
+    this.thermoDT = Math.max(0, B.bodyTemp - this.airTemp) * this.mode.thermoScale * this.insulation;
     this._ectoPerf();
     this.activeDirective();
 
@@ -1365,7 +1381,11 @@ window.Trophic = window.Trophic || {};
       case 'graze': {
         const i = e.ti;
         const cx = (i % N) + 0.5, cy = ((i / N) | 0) + 0.5;
-        if (Math.hypot(cx - e.x, cy - e.y) > 0.45) return;
+        if (Math.hypot(cx - e.x, cy - e.y) > 0.45) {
+          // Grazers crop as they walk: a half-rate bite from any plant they eat on the tile they're crossing.
+          if (e.food === 'plant') this._grazeOnTheWay(e);
+          return;
+        }
         const room = st.maxE - e.E;
         if (room < 1) { e.state = 'rest'; e.think = 0; return; }
         if (e.food === 'pop') {
@@ -1435,6 +1455,20 @@ window.Trophic = window.Trophic || {};
         break;
       }
     }
+  };
+
+  World.prototype._grazeOnTheWay = function (e) {
+    const st = e.st, j = this.tileAt(e.x, e.y), t = this.ptype[j];
+    if (!t || !e.sp.foods.has(this.producers[t].id) || (st.swim && this.terrain[j] !== 1)) return;
+    const room = st.maxE - e.E;
+    if (room < 1) return;
+    const P = this.producers[t];
+    const avail = this.pE[j] - P.max * B.grazeFloor;
+    const amt = Math.min(0.5 * st.eatRate * this._handling(e, j) * (st.ecto ? this.ectoPerf : 1), avail, room / (st.plantA * st.P));
+    if (amt <= 0.5) return;
+    this.pE[j] -= amt;
+    this.pbook.eaten[t] += amt;
+    this._digest(e, amt, st.plantA, st.P, P.name, j, 'producer', amt * P.nContent);
   };
 
   World.prototype.tileAt = function (x, y) { return clamp(y | 0, 0, N - 1) * N + clamp(x | 0, 0, N - 1); };
@@ -1728,7 +1762,7 @@ window.Trophic = window.Trophic || {};
   const r2 = v => Math.round(v * 100) / 100;
   const r3 = v => Math.round(v * 1000) / 1000;
   const spFields = ['id', 'name', 'isPlayer', 'level', 'archetype', 'archetypeName', 'base', 'eats', 'flags', 'startPop', 'initialPop', 'herdSize',
-    'invasive', 'transient', 'descendant', 'parentId', 'originRound', 'hue', 'behavior', 'weakness', 'note', 'mu', 'counter', 'extinctRound', 'arrival'];
+    'invasive', 'transient', 'descendant', 'parentId', 'originRound', 'hue', 'behavior', 'weakness', 'note', 'mu', 'counter', 'extinctRound', 'arrival', 'meta'];
 
   World.prototype.serialize = function () {
     const alive = this.ents.filter(e => e.alive);

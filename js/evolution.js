@@ -21,7 +21,7 @@ window.Trophic = window.Trophic || {};
     const rng = w.rng;
     const g = new Float32Array(NG);
     const mutab = (a[G.mutability] + b[G.mutability]) / 2;
-    const base = B.mutationRate * (sp.mu || 1) * (muMult || 1) * mutab;
+    const base = B.mutationRate * (sp.mu == null ? 1 : sp.mu) * (muMult || 1) * mutab;   // mu 0: fixed traits (real species)
     const focus = sp.focus || {};
     for (let i = 0; i < NG; i++) {
       const d = GENES[i];

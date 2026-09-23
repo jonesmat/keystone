@@ -101,7 +101,7 @@
         <button role="tab" data-mode="meadow">Temperate Meadow</button>
         <button role="tab" data-mode="channel">Open Channel</button>
         <button role="tab" data-mode="generated">Generated world</button>
-        <button role="tab" data-mode="sandbox" disabled title="Sandbox arrives in a later update">Sandbox</button>
+        <button role="tab" data-mode="catalog" title="Real species from a U.S. ecoregion">Real ecoregion</button>
       </div>
       <button class="icon-btn" data-menu aria-label="Menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></button>
     </header>
@@ -115,9 +115,12 @@
           <div class="row between"><h2 class="h-serif">World generator</h2><span class="caption">Same seed, same world</span></div>
           <div class="gen-controls">
             <label class="field"><span class="caption">World seed</span><input id="nw-seed" class="mono" inputmode="numeric" maxlength="10"></label>
-            <label class="field"><span class="caption">Biome budget</span><select id="nw-biome"></select></label>
+            <label class="field" id="nw-biome-field"><span class="caption">Biome budget</span><select id="nw-biome"></select></label>
+            <label class="field" id="nw-eco-field" hidden><span class="caption">Ecoregion (EPA Level II)</span><select id="nw-eco"></select></label>
+            <label class="field" id="nw-scen-field" hidden><span class="caption">Scenario</span><select id="nw-scen"></select></label>
             <button class="btn primary" id="nw-new"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5V5h-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>New world</button>
             <div class="stability" id="nw-stability"></div>
+            <p class="caption" id="nw-share" hidden></p>
           </div>
           <div class="eyebrow" id="nw-roster-title">Roster</div>
           <div id="nw-roster" class="roster"></div>
@@ -295,6 +298,10 @@
         <button class="btn ghost danger" id="menu-quit">Quit to New world</button>
       </div>
       <p class="caption">The game autosaves at the start of every Evolve phase.</p>
+      <details class="controls-help" id="menu-credits">
+        <summary>Data sources</summary>
+        <div id="credits-body" class="caption"></div>
+      </details>
       <details class="controls-help">
         <summary>Controls</summary>
         <table>
@@ -320,6 +327,9 @@
 <script src="js/cycles.js"></script>
 <script src="js/populations.js"></script>
 <script src="js/energy.js"></script>
+<script src="js/scenarios.js"></script>
+<script src="js/catalog.js"></script>
+<script src="js/catalogs/index.js"></script>
 <script src="js/evolution.js"></script>
 <script src="js/generator.js"></script>
 <script src="js/sprites.js"></script>

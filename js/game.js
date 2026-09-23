@@ -66,9 +66,14 @@ window.Trophic = window.Trophic || {};
   };
 
   G.setMode = function (m) {
-    if (m === 'sandbox') return;
     G.setup.mode = m;
-    if (m === 'generated') G.regenerate();
+    if (m === 'catalog') {
+      const idx = T.CATALOG_INDEX || [];
+      if (!idx.length) { UI().toast('No ecoregion catalogs are built yet (tools/catalog/build.js).', 'bad'); G.setup.mode = 'meadow'; return; }
+      if (!G.setup.ecoregion || !idx.some(e => e.code === G.setup.ecoregion)) G.setup.ecoregion = idx[0].code;
+      if (G.setup.scenario === undefined) G.setup.scenario = (T.SCENARIOS.find(s => s.ecoregion === G.setup.ecoregion) || {}).id || null;
+      G.regenerateCatalog();
+    } else if (m === 'generated') G.regenerate();
     else if (m === 'channel') {
       G.cancelGen(); G.setup.roster = T.Gen.channelRoster(); G.setup.biome = 'channel'; G.setup.stability = { state: 'idle' };
       // A warm-blooded grazer can't strain enough plankton to stay warm in open water; start from a mixed diet.
@@ -80,8 +85,25 @@ window.Trophic = window.Trophic || {};
   G.setSeed = function (seed) {
     G.setup.seed = seed || 1;
     if (G.setup.mode === 'generated') G.regenerate();
+    else if (G.setup.mode === 'catalog') G.regenerateCatalog();
     G.renderNewWorld();
   };
+  // A shared seed like "9.3-rewilding-48213" sets the ecoregion, scenario and seed at once.
+  G.setSeedString = function (str) {
+    const p = T.Catalog.parseSeed(str);
+    if (!p) { G.setSeed(parseInt(str, 10) >>> 0); return; }
+    if (!(T.CATALOG_INDEX || []).some(e => e.code === p.code)) { UI().toast('Ecoregion ' + p.code + ' isn\'t built in this copy of the game.', 'bad'); return; }
+    Object.assign(G.setup, { mode: 'catalog', ecoregion: p.code, scenario: p.scenario, seed: p.seed });
+    G.regenerateCatalog();
+    G.renderNewWorld();
+  };
+  G.setEcoregion = function (code) {
+    G.setup.ecoregion = code;
+    G.setup.scenario = (T.SCENARIOS.find(s => s.ecoregion === code) || {}).id || null;
+    G.regenerateCatalog();
+    G.renderNewWorld();
+  };
+  G.setScenario = function (id) { G.setup.scenario = id || null; G.regenerateCatalog(); G.renderNewWorld(); };
   G.newSeed = function () { G.setSeed(randSeed()); };
   G.setBiome = function (b) { G.setup.biome = b; if (G.setup.mode === 'generated') G.regenerate(); G.renderNewWorld(); };
   G.setDifficulty = function (d) { G.setup.difficulty = d; G.renderNewWorld(); };
@@ -125,6 +147,57 @@ window.Trophic = window.Trophic || {};
     setTimeout(step, 0);
   };
 
+  // Real ecoregion worlds: load the catalog, draw a cast for the scenario's niche slots, and stability-test it in
+  // small slices, redrawing only the slots whose species failed (the same loop as T.Catalog.rosterStable).
+  G.regenerateCatalog = function () {
+    G.cancelGen();
+    const token = G.genToken, st = G.setup;
+    st.stability = { state: 'running', attempt: 1, progress: 0, round: 1, catalog: true };
+    st.roster = { producers: [], species: [] };
+    T.Catalog.load(st.ecoregion, cat => {
+      if (token !== G.genToken) return;
+      if (!cat) { st.stability = { state: 'fail', attempt: 0 }; G.renderNewWorld(); return; }
+      const scenario = st.scenario ? T.scenarioById(st.scenario) : null;
+      const slots = scenario ? scenario.slots : T.SANDBOX_SLOTS;
+      const avoid = slots.map(() => new Set());
+      const maxAttempts = 6;
+      let attempt = 1, test = null, roster = null, last = '';
+      const startAttempt = () => {
+        roster = T.Catalog.roster(cat, scenario, st.seed + (attempt - 1) * 7919, avoid);
+        test = new T.Gen.StabilityTest(roster, st.seed, roster.biome, 5);
+        st.roster = roster;
+      };
+      startAttempt();
+      let lastPaint = 0;
+      const step = () => {
+        if (token !== G.genToken) return;
+        const done = test.step(40);
+        st.stability.progress = test.progress();
+        st.stability.round = test.round;
+        if (done) {
+          if (test.pass || attempt >= maxAttempts) {
+            st.stability = { state: test.pass ? 'pass' : 'fail', attempt, catalog: true, last: test.reason };
+            st.worldSeed = st.seed;
+            G.renderNewWorld();
+            return;
+          }
+          const failed = new Set(test.failedIds || []);
+          roster.species.forEach(d => { if (failed.has(d.id)) { const k = slots.findIndex(sl => (sl.id || sl.role) === d.slot); if (k >= 0) avoid[k].add(d.catalogKey); } });
+          last = test.reason;
+          attempt++;
+          startAttempt();
+          st.stability = { state: 'running', attempt, progress: 0, round: 1, last, catalog: true };
+          if (G.state === 'newworld') G.renderNewWorld();
+        }
+        const now = performance.now();
+        if (now - lastPaint > 200) { lastPaint = now; if (G.state === 'newworld') S().renderStability(); }
+        setTimeout(step, 0);
+      };
+      G.renderNewWorld();
+      setTimeout(step, 0);
+    });
+  };
+
   G.setFounderTab = function (t) {
     G.setup.ftab = t;
     if (t === 'roll' && !G.setup.rolled) G.setup.rolled = T.Gen.rollFounder(G.setup.archetypeId, G.setup.rollSeed);
@@ -161,14 +234,17 @@ window.Trophic = window.Trophic || {};
     const founder = clone(Object.assign({}, G.currentFounder(), { genome: null }));
     founder.genome = new Float32Array(G.currentFounder().genome);
     const seed = st.mode === 'generated' ? st.worldSeed || st.seed : st.seed;
-    const biome = B.biomes[st.mode === 'generated' ? st.biome : st.mode === 'channel' ? 'channel' : 'meadow'];
-    const world = T.createWorld({ seed, roster: st.roster, player: founder, biome, difficulty: diff, debug: G.settings.debug, climateTrend: !!st.climateTrend });
+    const scen = st.mode === 'catalog' && st.scenario ? T.scenarioById(st.scenario) : null;
+    const biome = st.mode === 'catalog' ? st.roster.biome : B.biomes[st.mode === 'generated' ? st.biome : st.mode === 'channel' ? 'channel' : 'meadow'];
+    const world = T.createWorld({ seed, roster: st.roster, player: founder, biome, difficulty: diff, debug: G.settings.debug, climateTrend: !!st.climateTrend || !!(scen && scen.climateTrend) });
     G.world = world;
     let mp = diff.startMP;
     if (st.ftab === 'roll') mp += B.rolledFounderMP;
     if (st.ftab === 'custom') mp = B.customFounderMP;
     G.run = {
       v: 2, seed, mode: st.mode, biome: biome.id, difficulty: st.difficulty, speciesName: founder.name,
+      ecoregion: st.mode === 'catalog' ? st.ecoregion : null, scenario: scen ? scen.id : null, worldName: st.mode === 'catalog' ? (scen ? scen.name + ' · ' : '') + biome.name : null,
+      seedString: st.mode === 'catalog' ? st.roster.seedString : null,
       founder: { tab: st.ftab, id: st.ftab === 'templates' ? st.templateId : st.ftab === 'roll' ? st.archetypeId : st.customLevel },
       round: 1, mp, orders: [], mutants: [], championUsed: false, prevMean: null,
       rivals: [], rivalRecords: {}, collapseCount: 0, apexCount: 0, startProducer: world.producerBiomass(),
@@ -749,6 +825,20 @@ window.Trophic = window.Trophic || {};
     $('menu-title').textContent = G.state === 'simulate' ? 'Paused' : 'Menu';
     $('menu-export').disabled = !G.run;
     $('menu-quit').hidden = G.state === 'newworld';
+    // Credits for the real-species data: every source behind the catalogs this copy of the game carries.
+    const idx = T.CATALOG_INDEX || [];
+    const cat = G.run && G.run.ecoregion && T.CATALOGS && T.CATALOGS[G.run.ecoregion];
+    const box = $('credits-body');
+    box.replaceChildren();
+    if (!idx.length) box.append(document.createTextNode('This copy of the game has no real-species catalogs.'));
+    else {
+      box.append(document.createTextNode('Real-species catalogs for ' + idx.length + ' EPA Level II ecoregion' + (idx.length > 1 ? 's' : '') + ', built from:'));
+      const ul = document.createElement('ul');
+      const src = (cat || {}).sources || ['U.S. EPA Level III ecoregions (2011), grouped by CEC Level II', 'GBIF.org occurrence records and Backbone Taxonomy, with IUCN Red List categories',
+        'GRIIS United States (Contiguous) ver. 2.0, 2022', 'EltonTraits 1.0 (Wilman et al. 2014), CC0', 'USDA NRCS PLANTS Database', 'Open-Meteo historical weather (ERA5), CC BY 4.0'];
+      for (const s of src) { const li = document.createElement('li'); li.textContent = s; ul.append(li); }
+      box.append(ul, document.createTextNode('Traits are real; behaviour in the simulation is simplified.'));
+    }
     $('menu-resume').focus();
   };
   G.closeMenu = function () { G.menuOpen = false; $('modal-menu').hidden = true; };
