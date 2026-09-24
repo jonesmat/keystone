@@ -275,6 +275,44 @@ Trophic.BALANCE = {
     windthrowChance: 0.15,
   },
 
+  // ---------- Phase 3: interactions (js/interactions.js) ----------
+  interactions: {
+    outOfReach: 0.3,        // hunting-score multiplier for prey outside the predator's reachable strata
+    hostMass: 3,            // warm-blooded animals at least this big carry parasites
+    paraCap: 0.02,          // parasite load a host can carry, as a share of its full reserves
+    paraInfect: 0.002,      // chance per tick an uninfected host picks up parasites
+    paraGrow: 0.004,        // parasites' growth rate on the host (logistic, per tick)
+    paraResp: 0.001,        // parasites' respiration per tick (the host's steady cost)
+    satedHost: 0.6,         // a follower doesn't flee a host this well fed
+    followRange: 20,        // tiles a follower looks for its host
+    followNear: 5,          // food within this many tiles of the host is preferred
+    flushMass: 5,           // grazers at least this big flush prey for followers
+    flushRadius: 2.5,
+    flushBonus: 0.5,        // followers catch this much more prey near a host
+    trampleMass: 8,         // animals heavier than this trample plants (amensalism)
+    trampleK: 0.5,          // EU of plants crushed per unit of mass per tile walked
+    pollinatorEvery: 50,    // ticks between updates of where pollinators are
+    pollinatorCell: 8,      // tiles per side of a pollinator presence cell (fruit sets within about one cell)
+    interiorDist: 3,        // woodland this many tiles from open ground is interior
+    parasiteRadius: 5,      // a nest parasite this close to an edge nest can lay in it
+    parasitism: 0.5,        // chance it does
+    monoShare: 0.35,        // a producer covering this share of land is a monoculture
+    pestChance: 0.5,        // chance per round of a pest outbreak in a monoculture
+    pestRadius: 6, pestLoss: 0.5,
+    exclusionOverlap: 0.8,  // niche overlap above which Gause's principle applies
+    exclusionRounds: 3,
+  },
+
+  // ---------- Phase 3: automatic keystone tests (js/keystone.js) ----------
+  keystone: {
+    rounds: 3,              // rounds each forked copy runs
+    threshold: 0.25,        // a removal that drops richness or diversity by more than this earns a Keystone badge
+    top: 10,                // species tested each round, by interaction strength
+    changed: 0.5,           // plus any species whose numbers changed by more than this share
+    maxItems: 14,
+    sliceMs: 6,             // file:// fallback: milliseconds of test work per slice
+  },
+
   // ---------- Phase 3: demography (js/demography.js) ----------
   // The regional pool behind the map edges, emigration above 0.8 K, mating systems and territories.
   demography: {

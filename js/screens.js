@@ -517,6 +517,30 @@ window.Trophic = window.Trophic || {};
     cont.innerHTML = '';
     cont.append(rep.outcome ? 'See final score ' : 'Continue to Evolve ', el('span', { 'aria-hidden': 'true', text: '→' }));
     cont.disabled = !!run.pendingSplit;
+    S.renderInteractions(rep);
+  };
+
+  // Interactions card: diversity, this round's interactions and the keystone tests' results as they arrive.
+  const INTER_CHIP = { commensalism: '+ / 0', protocooperation: '+ / +', amensalism: '0 / −', parasitism: '+ / −', mutualism: '+ / +', competition: '− / −' };
+  S.renderInteractions = function (rep) {
+    const ir = rep.interactions, list = $('rp-inter'), kbox = $('rp-keystone');
+    list.innerHTML = ''; kbox.innerHTML = '';
+    if (!ir) { $('rp-div').textContent = ''; return; }
+    const d = ir.diversity;
+    $('rp-div').textContent = 'Richness ' + d.richness + ' (' + d.animals + ' animal, ' + d.plants + ' plant species) · Shannon H ' + d.H.toFixed(2) + ' animals, ' + d.Hplants.toFixed(2) + ' plants';
+    if (!ir.items.length) list.append(el('li', null, el('span', { class: 'caption', text: 'No notable interactions this round beyond feeding.' })));
+    for (const it of ir.items) list.append(el('li', { class: 'it-' + it.type }, el('span', { class: 'chip', text: it.type[0].toUpperCase() + it.type.slice(1) + ' ' + INTER_CHIP[it.type] }), el('span', { text: it.text })));
+    const hab = ir.habitat;
+    const ext = ir.extinctions.length ? ir.extinctions.join(', ') + ' went locally extinct. ' : '';
+    list.append(el('li', null, el('span', { class: 'chip', text: 'Habitat' }), el('span', { text: (hab.wood ? Math.round(hab.interiorShare * 100) + '% of woodland is interior (3+ tiles from open ground). ' : 'No woodland. ') +
+      ext + 'Extinction rate: ' + ir.extinctionRate.toFixed(2) + ' per round (a round is a year; the fossil background for mammals is 0.002–0.02 per year, the 20th century about 0.25).' })));
+    const ks = rep.keystone;
+    kbox.append(el('h3', { class: 'h-serif', text: 'Keystone tests' }),
+      el('p', { class: 'caption', text: ks.total ? (ks.running ? 'Running during the next season: ' + ks.done.length + ' of ' + ks.total + ' done. ' : 'All ' + ks.total + ' done. ') +
+        'Each test replays 3 rounds without the species; a drop of more than 25% in richness or diversity earns a badge.' : 'No candidates this round.' }));
+    const found = ks.done.filter(r => r.keystone), other = ks.done.filter(r => !r.keystone);
+    for (const r of found) kbox.append(el('div', { class: 'ks-row ks-yes' }, el('b', { text: '★ ' + r.name }), el('span', { text: ' −' + Math.round(r.drop * 100) + '% without it' + (r.effects.length ? ': ' + r.effects.join('; ') : '') })));
+    if (other.length) kbox.append(el('p', { class: 'caption', text: 'Not keystone: ' + other.map(r => r.name.split(' (')[0] + ' (−' + Math.round(r.drop * 100) + '%)').join(', ') }));
   };
 
   function deathLabel(k) {
@@ -736,6 +760,10 @@ window.Trophic = window.Trophic || {};
     for (const d of diffs) table.append(el('tr', null, el('td', { text: d.name }), el('td', { text: d.a != null ? d.a.toFixed(2) : '—' }), el('td', { text: d.b != null ? d.b.toFixed(2) : '—' })));
     main.append(el('div', { class: 'cx-row' }, hist, el('div', { class: 'card pad-l' }, el('h3', { class: 'h-serif', text: 'Key genes' }), table)));
     requestAnimationFrame(() => drawHistory(chart, rec, par, S.cxGene));
+    const ksRec = w.keystones && w.keystones[rec.id];
+    if (ksRec) main.append(el('div', { class: 'eco' }, el('b', { text: '★ Keystone species (tested round ' + ksRec.round + ')' }),
+      el('p', { text: 'When the world was replayed for 3 rounds without ' + (ksRec.guild || rec.name) + ', the rest of the community lost ' + Math.round(ksRec.drop * 100) +
+        '% of its richness or diversity' + (ksRec.effects.length ? ': ' + ksRec.effects.join('; ') + '.' : '.') + ' A keystone species has an effect far larger than its abundance, like the sea star Pisaster, whose removal let mussels crowd out most other species.' })));
     const note = T.ECOLOGY[rec.parentId ? 'speciation' : P ? 'producer' : rec.archetype] || T.ECOLOGY.evolution;
     main.append(el('div', { class: 'eco' }, el('b', { text: 'Real-world ecology · ' + note.title.toLowerCase() }), el('p', { text: note.text })));
   }

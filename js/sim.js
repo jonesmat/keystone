@@ -196,7 +196,7 @@ window.Trophic = window.Trophic || {};
   World.prototype._newProducerBook = function () {
     const n = this.producers.length;
     const z = () => new Float64Array(n);
-    return { gpp: z(), resp: z(), npp: z(), litter: z(), eaten: z() };
+    return { gpp: z(), resp: z(), npp: z(), litter: z(), eaten: z(), unpollinated: z() };
   };
 
   // Ectotherm performance from air temperature (Phase 3); Phase 2 keeps its light-based slowdown instead.
@@ -265,6 +265,7 @@ window.Trophic = window.Trophic || {};
       invasive: !!def.invasive, transient: !!def.transient, descendant: !!def.descendant,
       parentId: def.parentId || null, originRound: def.originRound || 1, hue: def.hue || 0,
       behavior: def.behavior || '', weakness: def.weakness || '', note: def.note || '',
+      stratum: def.stratum || null, activity: def.activity || null,
       mu: def.mu || 1, counter: def.counter || 0, pressure: [], pressureCut: {}, focus: {}, splitStreak: 0,
       stats: null, foods: null, preyLevels: null, spriteKey: '', extinctRound: null,
       // Catalog species (Phase 3): the real species behind the definition.
@@ -277,6 +278,7 @@ window.Trophic = window.Trophic || {};
     this.rstats.push(this._newRoundStats(sp));
     this.popCount.push(0);
     this.rebuildDiet();
+    this.reach = null;   // interaction tables rebuild on the next tick
     return sp;
   };
 
@@ -566,7 +568,7 @@ window.Trophic = window.Trophic || {};
       hideT: 0, home: null, alive: true, born: this.t, age: 0,
       life: Math.round(st.lifeTicks * this.rng.range(0.85, 1.15)),
       parents: opts.parents || null, offspring: 0, champ: false, iso: opts.iso || 0, mem: null,
-      sex: opts.sex || (this.rng.next() < 0.5 ? 'F' : 'M'), pair: null, terr: false, emigrating: null,
+      sex: opts.sex || (this.rng.next() < 0.5 ? 'F' : 'M'), pair: null, terr: false, emigrating: null, para: 0,
     };
     this.ents.push(e);
     return e;
@@ -605,9 +607,11 @@ window.Trophic = window.Trophic || {};
   World.prototype.beginRound = function (round) {
     this._checkPyramid();
     this._demographyRoundEnd();
+    this._interactionsRoundEnd();
     if (round) this.round = round;
     this._cyclesBeginRound();
     this._successionBeginRound();
+    this._interactionsBeginRound();
     this._regionsBeginRound();
     this.roundTick = 0;
     this.seasonIdx = 0;
@@ -820,6 +824,7 @@ window.Trophic = window.Trophic || {};
   // ---------- tick ----------
 
   World.prototype.tick = function () {
+    if (!this.reach || this.reach.length !== this.species.length) this._interactionsRefresh();
     this.t++;
     this.roundTick++;
     this.seasonIdx = Math.min(3, Math.floor(this.roundTick / (B.roundTicks / 4)));
@@ -846,6 +851,7 @@ window.Trophic = window.Trophic || {};
     this._decay();
     this._cyclesTick();
     this._successionTick();
+    this._interactionsTick();
     if (this.t % B.populations.update === 0) this._updatePopulations();
     this._demographyTick();
     this._groundwater();
@@ -933,8 +939,9 @@ window.Trophic = window.Trophic || {};
       if (structure > 0) { this.detr[i] += structure; this.detrN[i] += structure * nP; book.litter[t] += structure; }
       if (P.fruit && fruiting && this.fruit[i] < 80) {
         const f = store * B.fruitShare;
-        this.fruit[i] += f;
-        store -= f;
+        // Obligate mutualism: without its pollinator nearby, the plant sets no fruit (the growth stays in leaves).
+        if (this.pollinated(i, P)) { this.fruit[i] += f; store -= f; }
+        else book.unpollinated[t] += f;
       }
       this.pE[i] = e + store;
       stored += npp;
@@ -1074,7 +1081,7 @@ window.Trophic = window.Trophic || {};
     let threat = null, tDist = Infinity, joinFlee = null;
     this.query(e.x, e.y, sight, (o, d2) => {
       if (o === e) return;
-      if (this.canHunt(o, e)) {
+      if (this.canHunt(o, e) && !this.tolerates(e, o)) {
         const d = Math.sqrt(d2);
         if (d < tDist && this._detects(e, o, d)) { threat = o; tDist = d; }
       } else if (st.herd > 0 && o.sp === sp && o.state === 'flee' && o.threat && d2 < 16) joinFlee = o;
@@ -1129,6 +1136,18 @@ window.Trophic = window.Trophic || {};
         e.state = 'seek'; e.tk = 4; e.wx = mate.x; e.wy = mate.y; return;
       }
     }
+    // Cleaners go to parasitized hosts; commensal followers keep near their hosts.
+    if (sp.flags.cleaner && hunger > 0.05 && !dir) {
+      const host = this._cleanerTarget(e);
+      if (host && rng.chance(0.6)) { e.state = 'clean'; e.tk = 2; e.te = host; return; }
+    }
+    if (sp.hosts && hunger < 0.75 && !dir && rng.chance(0.5)) {
+      const host = this._followTarget(e);
+      if (host) {
+        const d = Math.hypot(host.x - e.x, host.y - e.y), keep = sp.flags.follower === 'predator' ? 3.5 : 1.5;
+        if (d > keep) { e.state = 'follow'; e.tk = 3; e.wx = host.x + rng.range(-1, 1); e.wy = host.y + rng.range(-1, 1); return; }
+      }
+    }
     if (hunger < 0.08 && dir !== 'hunt') { this._wander(e); return; }
 
     // Filter-feeders don't hunt for food patches: they drift and strain whatever plankton the tile holds.
@@ -1144,7 +1163,10 @@ window.Trophic = window.Trophic || {};
     }
 
     let best = 0, bestKind = 0, bestTile = -1, bestEnt = null, bestCarr = null, bestFood = null;
-    const terrPen = (x, y) => (marker && Math.hypot(x - marker.x, y - marker.y) > B.territoryRadius ? 0.5 : 1);
+    // Commensal followers forage near their host: food close to it scores higher, food far from it lower.
+    const hostAt = sp.hosts ? this._followTarget(e) : null;
+    const terrPen = (x, y) => (marker && Math.hypot(x - marker.x, y - marker.y) > B.territoryRadius ? 0.5 : 1) *
+      (hostAt ? (Math.hypot(x - hostAt.x, y - hostAt.y) <= B.interactions.followNear ? 1.4 : 0.6) : 1);
     const foodMult = dir === 'forage' ? 1.5 : 1;
 
     if (st.pack > 0 && st.canMeat && hunger > 0.1) {
@@ -1184,13 +1206,13 @@ window.Trophic = window.Trophic || {};
           const avail = this.pE[i] - P.max * B.grazeFloor;
           if (avail > 8) {
             const h = this._handling(e, i);   // tough plants are less attractive: selection for toughness
-            const s = (Math.min(avail, st.eatRate * 15) * st.plantA * h * foodMult * terrPen(x, y)) / div;
+            const s = (Math.min(avail, st.eatRate * 15) * st.plantA * h * foodMult * sp.feedMult[t] * terrPen(x, y)) / div;
             if (s > best) { best = s; bestKind = 1; bestTile = i; bestFood = 'plant'; }
           }
         }
         if (this.fruit[i] > 3 && sp.foods.has('fruit')) {
           const A = Math.min(0.95, st.plantA + B.fruitBonusA);
-          const s = (Math.min(this.fruit[i], st.eatRate * 15) * A * foodMult * terrPen(x, y)) / div;
+          const s = (Math.min(this.fruit[i], st.eatRate * 15) * A * foodMult * (t ? sp.feedMult[t] : 1) * terrPen(x, y)) / div;
           if (s > best) { best = s; bestKind = 1; bestTile = i; bestFood = 'fruit'; }
         }
       }
@@ -1223,7 +1245,7 @@ window.Trophic = window.Trophic || {};
         // Type III response: predators pay less attention to rare prey, letting crashed prey recover.
         const np = this.popCount[o.sp.idx] || 0;
         const rarity = B.preyRarity > 0 ? np / (np + B.preyRarity) : 1;
-        const s = (Math.min(o.E + os.maxE * 0.1, st.eatRate * 25) * st.meatA * catchP * risk * huntMult * learned * rarity * terrPen(o.x, o.y)) / (1 + d * 0.5);
+        const s = (Math.min(o.E + os.maxE * 0.1, st.eatRate * 25) * st.meatA * catchP * risk * huntMult * learned * rarity * this.reachMult(sp, o.sp) * terrPen(o.x, o.y)) / (1 + d * 0.5);
         if (s > best) { best = s; bestKind = 2; bestEnt = o; }
       });
     }
@@ -1243,7 +1265,7 @@ window.Trophic = window.Trophic || {};
           const food = this.popFoodAt(b, i);
           if (food < 5) continue;
           const d = Math.hypot(x + 0.5 - e.x, y + 0.5 - e.y);
-          const s = (Math.min(food, st.eatRate * 15) * st.meatA * rarity * foodMult * terrPen(x, y)) / (1 + d * 0.25);
+          const s = (Math.min(food, st.eatRate * 15) * st.meatA * rarity * foodMult * this.reachMult(sp, b) * terrPen(x, y)) / (1 + d * 0.25);
           if (s > best) { best = s; bestKind = 4; bestTile = i; bestPop = b.idx; }
         }
       }
@@ -1340,6 +1362,8 @@ window.Trophic = window.Trophic || {};
       case 'filter': tx = e.wx; ty = e.wy; mult = 0.35; break;
       case 'migrate': tx = e.wx; ty = e.wy; mult = 0.85; break;
       case 'seek': tx = e.wx; ty = e.wy; mult = 0.7; break;
+      case 'follow': tx = e.wx; ty = e.wy; mult = 0.6; break;
+      case 'clean': if (e.te && e.te.alive) { tx = e.te.x; ty = e.te.y; mult = 0.8; stop = e.st.radius + e.te.st.radius + 0.2; } break;
       case 'swarm': tx = e.wx; ty = e.wy; mult = 0.75; break;
       default: mult = 0;
     }
@@ -1368,6 +1392,12 @@ window.Trophic = window.Trophic || {};
   World.prototype._act = function (e) {
     const st = e.st;
     switch (e.state) {
+      case 'clean': {
+        const h = e.te;
+        if (!h || !h.alive || h.para < 0.5) { e.state = 'wander'; e.te = null; e.think = 0; return; }
+        if (Math.hypot(h.x - e.x, h.y - e.y) <= st.radius + h.st.radius + 0.4) { if (this._clean(e, h) <= 0) { e.state = 'wander'; e.think = 0; } }
+        break;
+      }
       case 'hunt': case 'fight': {
         const o = e.te;
         if (!o || !o.alive) { e.state = 'wander'; e.think = 0; return; }
@@ -1389,8 +1419,11 @@ window.Trophic = window.Trophic || {};
         if (room < 1) { e.state = 'rest'; e.think = 0; return; }
         if (e.food === 'pop') {
           const prey = this.species[e.popSp], A = st.meatA;
-          const got = this._eatPopulation(e, prey, i, Math.min(st.eatRate * (st.ecto ? this.ectoPerf : 1), room / A));
+          // Commensal followers catch more of what their big host flushes as it walks.
+          const host = this.flushBonus(e), flush = host >= 0 ? 1 + B.interactions.flushBonus : 1;
+          const got = this._eatPopulation(e, prey, i, Math.min(st.eatRate * flush * (st.ecto ? this.ectoPerf : 1), room / A));
           if (got.amt <= 0.05) { e.think = 0; return; }
+          if (host >= 0) this._commensalBook(e, got.amt * (flush - 1) / flush, host);
           this._digest(e, got.amt, A, 1, prey.name, i, prey.level, got.nIn);
           break;
         }
@@ -1450,6 +1483,7 @@ window.Trophic = window.Trophic || {};
         const nIn = c.E > 0 ? c.N * (amt / c.E) : 0;
         c.E -= amt; c.N -= nIn;
         if (c.E < 0.5) { const ci = this.tileAt(c.x, c.y); this.detr[ci] += c.E; this.detrN[ci] += c.N; c.E = 0; c.N = 0; c.alive = false; }
+        if (e.sp.hosts && c.by != null && e.sp.hosts.has(c.by)) this._commensalBook(e, amt, c.by);
         this._digest(e, amt, A, P, c.src || 'Carrion', this.tileAt(e.x, e.y), c.lv || 'carrion', nIn);
         break;
       }
@@ -1543,8 +1577,8 @@ window.Trophic = window.Trophic || {};
     if (cause === 'k') key = 'k:' + (by >= 0 ? this.species[by].id : 'unknown');
     else if (cause === 'starved') key = 'starved@' + B.seasons[this.seasonIdx].name;
     rs.deaths[key] = (rs.deaths[key] || 0) + 1;
-    const body = e.E + e.tissue, bodyN = e.nT + e.nS;
-    e.E = body; e.tissue = 0; e.nT = 0; e.nS = 0;   // the carcass carries body tissue as well as reserves
+    const body = e.E + e.tissue + e.para, bodyN = e.nT + e.nS;
+    e.E = body; e.tissue = 0; e.nT = 0; e.nS = 0; e.para = 0;   // the carcass carries body tissue (and parasites) as well as reserves
     if (cause === 'starved') rs.starveLoss += e.E;
     else if (cause === 'k') rs.predLoss += e.E;
     else rs.otherLoss += e.E;
@@ -1553,7 +1587,7 @@ window.Trophic = window.Trophic || {};
     if (e.E > 0.5) {
       // A kill passes energy up the grazing chain at the prey's level; a body left by starvation, age or
       // disease feeds the detrital chain, like litter, whoever eats it.
-      c = { id: this.nextId++, x: e.x, y: e.y, E: e.E, alive: true, src: e.sp.name, lv: cause === 'k' ? e.sp.level : 'carrion', mass: e.st.mass, N: bodyN };
+      c = { id: this.nextId++, x: e.x, y: e.y, E: e.E, alive: true, src: e.sp.name, lv: cause === 'k' ? e.sp.level : 'carrion', mass: e.st.mass, N: bodyN, by: cause === 'k' ? by : null };
       this.carrion.push(c);
     } else {
       const i = this.tileAt(e.x, e.y);
@@ -1639,6 +1673,13 @@ window.Trophic = window.Trophic || {};
     for (let k = 0; k < n; k++) {
       const p = this._randomLand(e.x, e.y, 0.8, st.swim);
       const g = T.Evo.inherit(this, pa, pb, sp, muMult);
+      // The cowbird pattern: near an edge, a nest parasite's chick takes one place in the brood, raised on the host's energy.
+      const par = k === 0 ? this._nestParasite(e) : null;
+      if (par) {
+        const pc = this.spawn(par, p[0], p[1], each - tissueEach, T.sampleGenome(par.genome, this.rng, B.founderSigma), { grow: B.juvenileMass, tissue: tissueEach, nT: nEach });
+        this.rstats[par.idx].births++;
+        continue;
+      }
       const c = this.spawn(sp, p[0], p[1], each - tissueEach, g, { grow: B.juvenileMass, tissue: tissueEach, nT: nEach, parents: [e.num, mate ? mate.num : e.num], iso: e.iso });
       c.hp = c.st.maxHp * c.st.youngHp;
       c.home = e.home;
@@ -1700,7 +1741,7 @@ window.Trophic = window.Trophic || {};
   World.prototype.totalPools = function () {
     let s = 0;
     for (let i = 0; i < NT; i++) s += this.pE[i] + this.fruit[i] + this.detr[i] + this.peat[i];
-    for (const e of this.ents) if (e.alive) s += e.E + e.tissue;
+    for (const e of this.ents) if (e.alive) s += e.E + e.tissue + e.para;
     for (const c of this.carrion) if (c.alive) s += c.E;
     for (const sp of this.species) if (sp.grid) s += this.popEnergy(sp);
     return s;
@@ -1761,7 +1802,7 @@ window.Trophic = window.Trophic || {};
   const r2 = v => Math.round(v * 100) / 100;
   const r3 = v => Math.round(v * 1000) / 1000;
   const spFields = ['id', 'name', 'isPlayer', 'level', 'archetype', 'archetypeName', 'base', 'eats', 'flags', 'startPop', 'initialPop', 'herdSize',
-    'invasive', 'transient', 'descendant', 'parentId', 'originRound', 'hue', 'behavior', 'weakness', 'note', 'mu', 'counter', 'extinctRound', 'arrival', 'meta'];
+    'invasive', 'transient', 'descendant', 'parentId', 'originRound', 'hue', 'behavior', 'weakness', 'note', 'mu', 'counter', 'extinctRound', 'arrival', 'meta', 'stratum', 'activity'];
 
   World.prototype.serialize = function () {
     const alive = this.ents.filter(e => e.alive);
@@ -1783,17 +1824,18 @@ window.Trophic = window.Trophic || {};
       nutr: Array.from(this.nutr, r3), moist: Array.from(this.moist, r3), elev: Array.from(this.elev, r3),
       pgGrowth: Array.from(this.pgGrowth, r3), pgTough: Array.from(this.pgTough, r3), pgTol: Array.from(this.pgTol, r3),
       genomes: T.b64.encode(pool),
-      ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, e.iso, r2(e.tissue), r3(e.nT), r3(e.nS), e.sex, e.terr ? 1 : 0, e.id]),
+      ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, e.iso, r2(e.tissue), r3(e.nT), r3(e.nS), e.sex, e.terr ? 1 : 0, e.id, r2(e.para)]),
       carrion: this.carrion.filter(c => c.alive).map(c => [r2(c.x), r2(c.y), r2(c.E), c.src, c.lv, r3(c.N)]),
       cycles: this._cyclesState(),
       demography: this._demographyState(),
       succession: this._successionState(),
+      interactions: this._interactionsState(),
       populations: Object.fromEntries(this.species.filter(sp => sp.grid).map(sp => [sp.idx, this._popState(sp)])),
     };
   };
 
   // Saves carry this version; any other is from an older game and isn't loaded (no migrations).
-  T.SAVE_VERSION = 4;
+  T.SAVE_VERSION = 5;
 
   T.loadWorld = function (s, opts) {
     if (!s || s.v !== T.SAVE_VERSION) throw new Error('This save is from an older version of Keystone and cannot be loaded');
@@ -1822,7 +1864,7 @@ window.Trophic = window.Trophic || {};
       const sp = w.species[a[0]];
       const counter = sp.counter;
       const e = w.spawn(sp, a[1], a[2], a[3], g, { grow: a[7], parents: a[12], iso: a[13], tissue: a[14], nT: a[15] });
-      e.nS = a[16]; e.sex = a[17]; e.terr = !!a[18];
+      e.nS = a[16]; e.sex = a[17]; e.terr = !!a[18]; e.para = a[20];
       idMap[a[19]] = e.id;
       sp.counter = counter;
       e.hp = a[4]; e.breedCd = a[5]; e.home = a[6]; e.age = a[8]; e.life = a[9]; e.num = a[10]; e.offspring = a[11];
@@ -1830,6 +1872,7 @@ window.Trophic = window.Trophic || {};
     for (const c of s.carrion) w.carrion.push({ id: w.nextId++, x: c[0], y: c[1], E: c[2], src: c[3], lv: c[4], N: c[5], alive: true });
     for (const k in s.populations) { const sp = w.species[+k]; if (sp) w._popRestore(sp, s.populations[k]); }
     w._demographyRestore(s.demography, idMap);
+    w._interactionsRestore(s.interactions);
     w.loading = true;   // the beginRound below restarts the round; it doesn't end one
     w.updateRegions();
     w.updateMeans();

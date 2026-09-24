@@ -145,8 +145,9 @@ window.Trophic = window.Trophic || {};
   // Called from movement when an emigrant reaches the edge: it leaves the map with its energy and nitrogen.
   W._leaveMap = function (e) {
     e.alive = false;
-    this.ledger.exported += e.E + e.tissue;
+    this.ledger.exported += e.E + e.tissue + e.para;
     this.nledger.exported += e.nT + e.nS;
+    e.para = 0;
     const rs = this.rstats[e.sp.idx];
     rs.emig = (rs.emig || 0) + 1;
     rs.otherLoss += e.E + e.tissue;
@@ -186,6 +187,8 @@ window.Trophic = window.Trophic || {};
       this.query(e.x, e.y, P.alleeRadius, o => { if (o !== e && o.sp === sp && o.grow >= 1) n++; });
       if (n < P.alleeCount) return false;
     }
+    // Interior specialists nest only in woodland 3 or more tiles from open ground.
+    if (sp.flags.interior && !this.isInterior(this.tileAt(e.x, e.y))) return false;
     if (sp.flags.territorial && !e.terr) return this._claimTerritory(e);
     return true;
   };

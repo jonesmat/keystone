@@ -567,3 +567,14 @@ h3.h-serif { font-size: 16px; }
 .whit-fig { display: grid; gap: 2px; max-width: 260px; }
 .whit-svg { width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--line); }
 .whit-axes { font-size: 10px; }
+
+/* Interactions card and keystone tests (P3-M6) */
+.rp-inter { grid-column: 1 / -1; }
+.inter-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.inter-list li { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: start; }
+.inter-list .chip { justify-self: start; font-size: 11px; }
+.keystone-box { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.keystone-box h3 { margin: 0 0 4px; }
+.ks-row { font-size: 13px; margin: 4px 0; }
+.ks-yes b { color: #9A6B12; }
+@media (max-width: 640px) { .inter-list li { grid-template-columns: 1fr; gap: 2px; } }

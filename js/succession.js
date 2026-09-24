@@ -181,7 +181,7 @@ window.Trophic = window.Trophic || {};
       const seed = this._seedRain(i, next);
       if (seed) { this._switchProducer(i, seed); changed++; }
     }
-    if (changed) { this._computeShade(); this._successionCover(); }
+    if (changed) { this._computeShade(); this._successionCover(); this.edgeDirty = true; }
     this.cumSuccession = (this.cumSuccession || 0) + changed;
   };
 
@@ -295,7 +295,7 @@ window.Trophic = window.Trophic || {};
       }
     }
     for (const sp of this.species) if (sp.grid) this._popTotals(sp);
-    this._computeShade(); this._successionCover();
+    this._computeShade(); this._successionCover(); this.edgeDirty = true;
     const out = { type: 'wildfire', round: this.round, tiles: burned.size, x: start % N, y: (start / N) | 0 };
     this.disturbLog.push(out);
     return out;
@@ -311,7 +311,7 @@ window.Trophic = window.Trophic || {};
       this.sw[i] = 1; this.moist[i] = 1;
       tiles++;
     }
-    this._computeShade(); this._successionCover();
+    this._computeShade(); this._successionCover(); this.edgeDirty = true;
     const out = { type: 'flood', round: this.round, tiles };
     this.disturbLog.push(out);
     return out;
@@ -327,7 +327,7 @@ window.Trophic = window.Trophic || {};
       this._reset(i, 'gap');
       tiles++;
     }
-    this._computeShade(); this._successionCover();
+    this._computeShade(); this._successionCover(); this.edgeDirty = true;
     const out = { type: 'windthrow', round: this.round, tiles };
     this.disturbLog.push(out);
     return out;

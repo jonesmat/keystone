@@ -321,6 +321,8 @@ window.Trophic = window.Trophic || {};
       el('div', null, 'N / K ', el('b', { text: fmt(n) + ' / ' + (sp.K ? fmt(Math.round(sp.K)) : '—') })),
       el('div', null, 'Curve ', el('b', { text: d ? CURVE_TEXT[d.curve] || d.curve : 'first round' })),
       el('div', null, 'Mating ', el('b', { text: sp.mating || '—' })),
+      el('div', null, 'Feeds in ', el('b', { text: T.STRATA[sp.strat != null ? sp.strat : 4] + (sp.hosts ? ' · follows ' + [...sp.hosts].map(h => w.species[h].name).join(', ') : '') + (sp.flags.cleaner ? ' · cleaner' : '') })),
+      w.keystones && w.keystones[sp.id] ? el('div', null, 'Keystone ', el('b', { text: '★ −' + Math.round(w.keystones[sp.id].drop * 100) + '% without it' })) : el('span'),
       el('div', null, 'Regional pool ', el('b', { text: !pool ? '—' : pool.regionallyExtinct ? 'regionally extinct' : pool.poolOnly ? 'reintroduction only' : 'arrivals ' + Math.round(pool.level * 100) + '%' }))));
     if (d) wrap.append(el('p', { class: 'caption eq', text: 'Last round: N1 = N0 + B + I − D − E = ' + d.N0 + ' + ' + d.B + ' + ' + d.I + ' − ' + d.D + ' − ' + d.E + ' = ' + d.N1 +
       (d.r == null ? '' : ' · r = ' + (d.r >= 0 ? '+' : '') + d.r.toFixed(0) + '%') }));
@@ -522,6 +524,7 @@ window.Trophic = window.Trophic || {};
         el('div', null, 'Parents ', el('b', { text: e.parents ? '#' + String(e.parents[0]).padStart(4, '0') + ' × #' + String(e.parents[1]).padStart(4, '0') : 'founder' })),
         el('div', null, 'Offspring ', el('b', { text: String(e.offspring) })),
         el('div', null, 'Sex ', el('b', { text: (e.sex === 'F' ? 'female' : 'male') + (e.terr ? ' · territory' : '') + (e.emigrating ? ' · emigrating' : '') })),
+        e.sp.parasiteHost ? el('div', null, 'Parasites ', el('b', { text: e.para.toFixed(1) + ' EU' })) : el('span'),
         (() => {
           const rid = sp.regionMap ? sp.regionMap[w.tileAt(e.x, e.y)] : 0, reg = rid && w.regionById(sp.idx, rid);
           return reg ? el('div', null, 'Group ', el('button', { class: 'linklike', text: reg.label + ' (' + reg.n + ')', onclick: () => { G.renderer.selected = { region: { sp: sp.idx, id: rid } }; UI.renderInspector(); } })) : el('span');

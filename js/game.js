@@ -670,7 +670,22 @@ window.Trophic = window.Trophic || {};
       const sp = w.speciesById(r.id);
       if (sp) lines.push({ idx: sp.idx, name: sp.name, level: sp.level, hue: sp.hue, start: w.rstats[sp.idx].startPop, end: pops.count[sp.idx] });
     }
-    run.report = {
+    // This round's interactions, and the keystone tests, which fork the world and report during the next season.
+    const inter = w._interactionsRoundEnd();
+    const ks = { running: true, total: 0, done: [] };
+    if (T.KeystoneRunner) {
+      const round = run.round;
+      T.KeystoneRunner.start(w, (res, job) => {
+        ks.total = job.items.length; ks.done.push(res);
+        ks.running = job.done.length < job.items.length;
+        T.keystoneRecord(G.world, res, round);
+        if (res.keystone) UI().toast('Keystone found: ' + res.name + '. Without it, diversity dropped ' + Math.round(res.drop * 100) + '%.', 'good');
+        if (G.state === 'report' && G.run.report === report) S().renderInteractions(report);
+      });
+      ks.total = T.KeystoneRunner.job ? T.KeystoneRunner.job.items.length : 0;
+    }
+    const report = run.report = {
+      interactions: inter ? JSON.parse(JSON.stringify(inter)) : null, keystone: ks,
       round: run.round, playerName: p.name, rs: clone(Object.assign({}, rs, { birthMids: [] })), mpParts: parts, mpTotal: raw,
       outcome, evolved, defeatedNow, extinct, speciation, notes, lines,
       history: { t: w.history.t.slice(), pops: w.history.pops.map(r => r.slice()) },

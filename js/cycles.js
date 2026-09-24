@@ -320,6 +320,7 @@ window.Trophic = window.Trophic || {};
     const i = this.tileAt(e.x, e.y);
     if (this.terrain[i] === 1) return;
     this.comp[i] = Math.min(1, this.comp[i] + B.soil.compactK * Math.pow(st.mass, 0.75) * step);
+    this._trampleProducers(e, i, step);   // amensalism
   };
 
   // ---------- animals' nitrogen ----------

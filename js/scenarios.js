@@ -9,6 +9,7 @@
 //   startShare  producers: share of their kind's tiles to start on ('dominant' slots start covering most of the map)
 //   strata      animals: the foraging layers allowed (EltonTraits: canopy, midstory, understory, ground, water, air)
 //   need        extra constraints on the draw as a whole, e.g. { fixer: 1 } for at least one nitrogen-fixer
+//   interior    animals: interior-woodland specialists, which breed only 3 or more tiles from open ground
 //   domestic    a domestic species the slot always holds (cattle), since occurrence data rarely records livestock
 window.Trophic = window.Trophic || {};
 
@@ -95,7 +96,7 @@ window.Trophic = window.Trophic || {};
         { id: 'smallHerb', role: 'small herbivore', count: [6, 12] },
         { id: 'pollinators', role: 'pollinator', count: [5, 10] },
         { id: 'birds', role: 'songbird', count: [8, 14] },
-        { id: 'atRisk', role: 'songbird', count: [1, 1], status: 'endangered', strata: ['canopy', 'midstory', 'understory'] },   // a woodland nester
+        { id: 'atRisk', role: 'songbird', count: [1, 1], status: 'endangered', strata: ['canopy', 'midstory', 'understory'], interior: true },   // an interior-woodland nester
         { id: 'parasite', role: 'nest parasite', count: [1, 1] },
         { id: 'raptors', role: 'raptor', count: [2, 3] },
         { id: 'meso', role: 'mesopredator', count: [2, 4] },

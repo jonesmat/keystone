@@ -166,6 +166,14 @@ window.Trophic = window.Trophic || {};
     if (s.taxon === 'felid' || s.taxon === 'snake') flags.ambush = true;
     if (s.level === 'carnivore2') flags.territorial = true;
     if (s.level === 'decomposer') { flags.decomposer = true; flags.asexual = true; }
+    // Interaction roles: commensal followers (cattle egrets and cowbirds by big grazers, scavengers by predators),
+    // cleaners (birds that pick ticks off big mammals), nest parasites and pollinators.
+    const genus = s.sci.split(' ')[0];
+    if (['Bubulcus', 'Molothrus'].includes(genus)) flags.follower = 'grazer';
+    else if (s.roles.includes('scavenger') && s.flight) flags.follower = 'predator';
+    if (['Pica', 'Quiscalus', 'Sturnus', 'Molothrus'].includes(genus)) flags.cleaner = true;
+    if (s.roles.includes('nest parasite')) flags.nestParasite = true;
+    if (s.roles.includes('pollinator')) flags.pollinator = true;
     let herdSize = null;
     if ((s.taxon === 'bovid' || s.taxon === 'cervid') && s.mass > 20) { genome.social = 2; genome.cohesion = 0.8; herdSize = [4, 12]; }
     else if (s.taxon === 'canid' && s.mass > 25) { genome.social = 3; genome.cohesion = 0.85; flags.pack = true; herdSize = [3, 6]; }
@@ -182,6 +190,7 @@ window.Trophic = window.Trophic || {};
       id: 'c' + s.key, name: s.common || s.sci, sci: s.sci, level, archetype: s.taxon, archetypeName: s.taxon[0].toUpperCase() + s.taxon.slice(1),
       startPop, herdSize, base: { speed: SPEED[s.taxon] || (s.population ? 0.07 : 0.15), sight: SIGHT[s.taxon] || (s.population ? 3 : 6), apex: level === 'carnivore2' || undefined },
       eats: [], genome, flags, native: s.native, iucn: s.iucn, catalogKey: s.key, roles: s.roles, taxon: s.taxon, massKg: s.mass,
+      stratum: s.strata || null, activity: s.activity || null,
       hue: Math.round((hash(s.key) - 0.5) * 40),
       behavior: roleLine(s), weakness: '', note: codexNote(s, cat),
     };
@@ -286,6 +295,7 @@ window.Trophic = window.Trophic || {};
           d.slot = f.slot.id || f.slot.role;
           if (f.slot.start === 'pool') { d.startPop = 0; pool.push(d.id); }
           if (f.slot.invader) d.invasive = true;
+          if (f.slot.interior) d.flags.interior = true;   // nests only in interior woodland
           animals.push(d);
         }
       }
