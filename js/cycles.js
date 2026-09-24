@@ -58,7 +58,7 @@ window.Trophic = window.Trophic || {};
   W._newCycleBook = function () {
     this.cbook = {
       // nitrogen
-      fixLegume: 0, fixFree: 0, fixLightning: 0, denitrified: 0, leachedToWater: 0, leachedToGround: 0, nLimitedTicks: 0, tileTicks: 0,
+      fixLegume: 0, fixFree: 0, fixLightning: 0, denitrified: 0, denitrifiedWater: 0, leachedToWater: 0, leachedToGround: 0, nLimitedTicks: 0, tileTicks: 0,
       // water
       rain: 0, intercepted: 0, infiltrated: 0, runoff: 0, toLake: 0, et: 0, percolated: 0, capillary: 0, baseflow: 0, irrigation: 0,
       // carbon (1 carbon unit per EU)
@@ -239,6 +239,13 @@ window.Trophic = window.Trophic || {};
       const d = this.no3[i] * k + this.no2[i] * k;
       this.no3[i] *= 1 - k; this.no2[i] *= 1 - k;
       this.nledger.air -= d; cb.denitrified += d; this.cumCycles.denitrified += d;
+    }
+    if (!land) {
+      // Open water: the oxygen-poor mud beneath it denitrifies nitrate that runs in, so it doesn't pile up.
+      const k = Math.min(1, NB.sedimentDenit * dt * (0.3 + 0.7 * wf));
+      const d = this.no3[i] * k;
+      this.no3[i] -= d;
+      this.nledger.air -= d; cb.denitrified += d; cb.denitrifiedWater += d; this.cumCycles.denitrified += d;
     }
     this.nutr[i] = clamp((this.nh4[i] + this.no3[i]) / NB.indexRef, 0, 1);
   };

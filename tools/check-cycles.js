@@ -102,7 +102,7 @@ console.log('\nCompaction (half the map packed at the start)');
     const n = b.N * b.N;
     for (let i = 0; i < n; i++) if ((i % b.N) < b.N / 2 && b.terrain[i] === 0) b.comp[i] = 0.9;
     for (const w of [a, b]) while (!w.roundOver()) w.tick();
-    dA += a.cbook.denitrified; dB += b.cbook.denitrified;
+    dA += a.cbook.denitrified - a.cbook.denitrifiedWater; dB += b.cbook.denitrified - b.cbook.denitrifiedWater;   // soil only
     runA += a.cbook.runoff; rainA += a.cbook.rain; runB += b.cbook.runoff; rainB += b.cbook.rain;
   }
   const rA = runA / Math.max(1, rainA), rB = runB / Math.max(1, rainB);

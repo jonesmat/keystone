@@ -284,7 +284,9 @@ window.Trophic = window.Trophic || {};
   // Book one meal for a Population, exactly as _digest does for an individual.
   W._popBook = function (sp, i, amt, A, src, srcLv, nIn) {
     const g = sp.grid, rs = this.rstats[sp.idx];
-    const gain = amt * A, resp = 0, exc = amt * (1 - A);
+    // Decomposers respire most of what they assimilate (as individual decomposers do); the rest builds tissue.
+    const P = sp.level === 'decomposer' ? B.decomposerP : 1;
+    const gain = amt * A * P, resp = amt * A * (1 - P), exc = amt * (1 - A);
     g.E[i] += gain;
     this.ledger.heat += resp;
     this.detr[i] += exc;

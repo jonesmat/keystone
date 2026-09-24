@@ -136,6 +136,7 @@ Trophic.BALANCE = {
     nitrify1: 0.004,        // ammonia → nitrite per tick, aerobic soil only
     nitrify2: 0.02,         // nitrite → nitrate per tick
     denitrify: 0.004,       // nitrate → N2 per tick in waterlogged or compacted soil
+    sedimentDenit: 0.002,   // nitrate → N2 per tick in the sediments under open water
     toSalt: 0.001,          // dissolved nitrate → nitrate salts per tick in dry soil
     fromSalt: 0.02,         // salts → dissolved nitrate per tick under rain
     nitrateShare: 0.8,      // plants take 80% of their N as nitrate, 20% as ammonia
