@@ -20,6 +20,8 @@ window.Trophic = window.Trophic || {};
     $('nw-climate').addEventListener('change', e => G.setClimateTrend(e.target.checked));
     $('nw-volcanic').addEventListener('change', e => G.setPrimary(e.target.checked));
     $('nw-changing').addEventListener('change', e => G.setChanging(e.target.checked));
+    $('nw-realism').addEventListener('change', e => G.setRealism(e.target.checked));
+    document.querySelectorAll('[data-csv]').forEach(b => b.addEventListener('click', () => G.exportCSV(b.dataset.csv)));
     $('nw-eco').addEventListener('change', e => G.setEcoregion(e.target.value));
     $('nw-scen').addEventListener('change', e => G.setScenario(e.target.value));
     $('btn-continue').addEventListener('click', () => G.continueRun());
@@ -65,6 +67,7 @@ window.Trophic = window.Trophic || {};
       scen.replaceChildren(...here.map(s => el('option', { value: s.id, text: s.name })), el('option', { value: '', text: 'Sandbox (no goals)' }));
       scen.value = st.scenario || '';
     }
+    renderEcoMap(cat ? st.ecoregion : null);
     const share = $('nw-share');
     share.hidden = !(cat && st.roster && st.roster.seedString);
     if (!share.hidden) share.textContent = 'Share this world: ' + st.roster.seedString + ' (paste it into the seed box)';
@@ -129,6 +132,29 @@ window.Trophic = window.Trophic || {};
     box.replaceChildren(el('div', { class: 'whit-fig' }, g,
       el('div', { class: 'whit-axes caption', text: 'Precipitation 0–400 cm/yr → · temperature −15 to 30 °C ↑' })),
       el('p', { class: 'caption' }, el('b', { text: b.name }), ' · ' + biome.tMean.toFixed(0) + ' °C, ' + Math.round(biome.rain) + ' cm/yr · climax: ' + b.climaxName));
+  }
+
+  // The continental U.S. with its Level II ecoregions: built catalogs coloured by biome and clickable; the chosen one
+  // outlined. A Level III catalog (the Edwards Plateau) is picked from the list, and highlights its Level II parent.
+  const MAP_BIOME = { 'taiga': '#8FAE9A', 'temperate forest': '#9CC08A', 'temperate grassland': '#D6D48E', 'desert': '#E6CFA0', 'tundra': '#C9D3D6', 'tropical': '#6FA57A' };
+  function renderEcoMap(code) {
+    const box = $('nw-map');
+    box.hidden = !code || !T.US_MAP;
+    if (box.hidden) { box.replaceChildren(); return; }
+    const M = T.US_MAP, built = new Map((T.CATALOG_INDEX || []).map(e => [e.code, e]));
+    const sel = code.split('.').slice(0, 2).join('.');
+    const s = T.UI.svg('svg', { viewBox: '0 0 ' + M.width + ' ' + M.height, class: 'eco-svg', role: 'img', 'aria-label': 'Map of U.S. ecoregions' });
+    let chosen = null;
+    for (const r of M.regions) {
+      const e = built.get(r.code);
+      const p = T.UI.svg('path', { d: r.d, fill: e ? MAP_BIOME[e.biome] || '#C8C2AE' : '#E4DFD0', class: 'eco-reg' + (e ? ' built' : '') + (r.code === sel ? ' sel' : ''),
+        'fill-rule': 'evenodd' }, T.UI.svg('title', null, r.code + ' ' + r.name + (e ? ' · ' + e.species + ' species · ' + e.biome : ' · no catalog yet')));
+      if (e) p.addEventListener('click', () => G.setEcoregion(r.code));
+      if (r.code === sel) chosen = p; else s.append(p);
+    }
+    if (chosen) s.append(chosen);   // drawn last, so its outline sits on top
+    const e = built.get(code);
+    box.replaceChildren(s, el('p', { class: 'caption', text: e ? code + ' ' + e.name + ' · ' + e.species + ' species · ' + e.biome + ' · click another coloured region to switch' : '' }));
   }
 
   function renderRoster(roster, pending) {
@@ -215,7 +241,7 @@ window.Trophic = window.Trophic || {};
 
   S.renderReport = function (rep) {
     const run = G.run, w = G.world;
-    $('rp-round').textContent = 'Round ' + rep.round;
+    $('rp-round').textContent = 'Round ' + rep.round + (run.realism ? ' · Realism' : '');
     const chips = $('rp-chips'); chips.innerHTML = '';
     for (const n of rep.gone) chips.append(el('span', { class: 'chip chip-red' }, n + ' lost'));
     const ob = $('rp-outcome');
@@ -238,8 +264,7 @@ window.Trophic = window.Trophic || {};
     if (rep.goals.length) gb.append(el('h3', { class: 'h-serif', text: 'Restoration goals' }),
       el('ul', { class: 'goal-list' }, rep.goals.map(g => el('li', { class: g.met ? 'met' : '' }, el('span', { class: 'tick', text: g.met ? '✓' : '○' }), el('span', null, g.text, el('small', { text: g.now }))))));
     // Energy through the consumers.
-    const eff = UI.drawSankey($('rp-sankey'), rep.energy);
-    $('rp-sankey-note').textContent = eff ? 'Only ' + Math.round(eff * 100) + '% of what the consumers ate became new tissue' : '';
+    S.renderEnergy(rep);
     // Populations chart.
     const lg = $('rp-legend');
     requestAnimationFrame(() => {
@@ -278,6 +303,41 @@ window.Trophic = window.Trophic || {};
     cont.innerHTML = '';
     cont.append(rep.outcome ? 'See final score ' : 'Plan next round ', el('span', { 'aria-hidden': 'true', text: '→' }));
     S.renderInteractions(rep);
+  };
+
+  // ---------- the energy chain ----------
+
+  // The report's Energy card: the textbook's five-step chain (GPP → NPP → ingested → GSP → NSP) for the plants →
+  // herbivores → carnivores chain or one species, each loss named with its efficiency, and optionally the textbook's
+  // 100,000-unit worked example beside it; or the consumers' combined flow diagram.
+  S.energyView = 'chain';
+  S.renderEnergy = function (rep) {
+    const tabs = $('rp-energy-tabs'), sel = $('rp-chain-of'), tb = $('rp-textbook');
+    if (!tabs.dataset.bound) {
+      tabs.dataset.bound = '1';
+      tabs.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { S.energyView = b.dataset.view; S.renderEnergy(G.run.report); }));
+      sel.addEventListener('change', () => S.renderEnergy(G.run.report));
+      tb.addEventListener('change', () => S.renderEnergy(G.run.report));
+    }
+    tabs.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === S.energyView)));
+    const chainView = S.energyView === 'chain';
+    $('rp-chain').hidden = !chainView; $('rp-sankey').hidden = chainView;
+    sel.hidden = !chainView; tb.parentNode.hidden = !chainView;
+    if (!chainView) {
+      const eff = UI.drawSankey($('rp-sankey'), rep.energy);
+      $('rp-sankey-note').textContent = eff ? 'Only ' + Math.round(eff * 100) + '% of what the consumers ate became new tissue.' : '';
+      return;
+    }
+    // The chain's subject: the whole chain, or a species the steward has surveyed.
+    const m = rep.measure, prev = sel.value;
+    sel.innerHTML = '';
+    sel.append(el('option', { value: '', text: 'Plants → herbivores → carnivores' }));
+    for (const r of m.species.filter(r => r.ingested > 0 && G.world.speciesById(r.id) && UI.knowLevel(G.world.speciesById(r.id)) >= 2).sort((a, b) => b.ingested - a.ingested))
+      sel.append(el('option', { value: r.id, text: r.name }));
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+    UI.drawChain($('rp-chain'), m, { species: sel.value || null, textbook: tb.checked });
+    $('rp-sankey-note').textContent = sel.value ? 'One species: what it ate, what it assimilated and what became new tissue.'
+      : 'Each step keeps only part of the energy of the one before; the rest is respired as heat or left uneaten as detritus.';
   };
 
   // The community card: the mandate, each stakeholder's trust, asks met or failed, arrivals, departures and land sales.
@@ -346,7 +406,16 @@ window.Trophic = window.Trophic || {};
   // ======================= Codex =======================
 
   // Every species in the world: its fixed trait sheet, food web links, population history and ecology notes.
+  S.codexTab = 'species';
   S.renderCodex = function (id) {
+    const tabs = $('cx-tabs');
+    if (!tabs.dataset.bound) {
+      tabs.dataset.bound = '1';
+      tabs.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { S.codexTab = b.dataset.tab; S.renderCodex(); }));
+    }
+    tabs.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tab === S.codexTab)));
+    if (T.conceptById(id)) S.codexTab = 'concepts';
+    if (S.codexTab === 'concepts') return S.renderConcepts(T.conceptById(id) ? id : null);
     const w = G.world, run = G.run, pops = w.countPops().count;
     const entries = w.producers.filter(Boolean).map(P => ({ id: P.id, name: P.name, level: 'producer', hue: P.hue, P }))
       .concat(w.species.filter(sp => !sp.transient && UI.known(sp)).map(sp => ({ id: sp.id, name: sp.name, level: sp.level, hue: sp.hue, sp, gone: !pops[sp.idx] && UI.knowLevel(sp) >= 2 })));
@@ -362,6 +431,26 @@ window.Trophic = window.Trophic || {};
         shapeIcon(lv, e.hue), el('span', { text: e.name + (w.keystones && w.keystones[e.id] ? ' ★' : '') })));
     }
     renderEntry(entries.find(e => e.id === id));
+  };
+
+  // The Concepts tab: the ecology terms the game uses, grouped by topic, each with where it appears in play.
+  S.renderConcepts = function (id) {
+    $('cx-tabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tab === 'concepts')));
+    const list = $('cx-list'), main = $('cx-main');
+    list.innerHTML = ''; main.innerHTML = '';
+    const C = T.CONCEPTS, cur = T.conceptById(id) || C[0];
+    $('cx-sub').textContent = '· ' + C.length + ' concepts';
+    for (const topic of [...new Set(C.map(c => c.topic))]) {
+      list.append(el('div', { class: 'eyebrow', text: topic }));
+      for (const c of C.filter(x => x.topic === topic)) list.append(el('button', { 'aria-current': String(c.id === cur.id), onclick: () => S.renderConcepts(c.id) }, el('span', { text: c.term })));
+    }
+    const card = el('div', { class: 'card pad-l concept' }, el('div', { class: 'eyebrow', text: cur.topic }), el('h2', { class: 'h-serif', text: cur.term }),
+      el('p', { class: 'concept-def', text: cur.def }), el('h3', { class: 'h-serif', text: 'Where it appears in play' }), el('p', { text: cur.where }));
+    if (cur.overlay && G.world && T.Overlays.byId(cur.overlay)) card.append(el('button', { class: 'btn small', text: 'Show the ' + T.Overlays.byId(cur.overlay).name + ' overlay on the map',
+      onclick: () => { G.closeOverlay(); UI.setOverlay(cur.overlay); UI.toast(T.Overlays.byId(cur.overlay).name + ' overlay on: it shows on the map'); } }));
+    const see = (cur.see || []).map(T.conceptById).filter(Boolean);
+    if (see.length) card.append(el('h3', { class: 'h-serif', text: 'See also' }), el('div', { class: 'link-row' }, see.map(c => el('button', { onclick: () => S.renderConcepts(c.id) }, c.term))));
+    main.append(card);
   };
 
   function renderEntry(ent) {
@@ -380,7 +469,7 @@ window.Trophic = window.Trophic || {};
       for (const f of sp.foods) { const pp = w.producerById(f); eats.push(pp ? { name: pp.name, level: 'producer', hue: pp.hue, id: pp.id } : { name: f[0].toUpperCase() + f.slice(1), level: f === 'fruit' ? 'producer' : 'decomposer', hue: 0 }); }
       for (const b of w.species) if (b !== sp && w.edible[sp.idx][b.idx]) eats.push({ name: b.name, level: b.level, hue: b.hue, id: b.id });
       for (const b of w.species) if (b !== sp && w.edible[b.idx][sp.idx]) eatenBy.push({ name: b.name, level: b.level, hue: b.hue, id: b.id });
-    } else for (const b of w.species) if (b.foods.has(P.id)) eatenBy.push({ name: b.name, level: b.level, hue: b.hue, id: b.id });
+    } else if (P) for (const b of w.species) if (b.foods.has(P.id)) eatenBy.push({ name: b.name, level: b.level, hue: b.hue, id: b.id });
     const chipRow = (label, items) => el('div', { class: 'link-row' }, el('span', { class: 'lbl', text: label }),
       items.length ? items.map(it => el('button', { onclick: it.id ? () => S.renderCodex(it.id) : null }, shapeIcon(it.level, it.hue), it.name)) : el('span', { text: 'nothing' }));
     // Diet and predators are known once the species is Studied.
@@ -412,10 +501,62 @@ window.Trophic = window.Trophic || {};
     if (ksRec) main.append(el('div', { class: 'eco' }, el('b', { text: '★ Keystone species (tested round ' + ksRec.round + ')' }),
       el('p', { text: 'When the world was replayed for 3 rounds without ' + (ksRec.guild || ent.name) + ', the rest of the community lost ' + Math.round(ksRec.drop * 100) +
         '% of its richness or diversity' + (ksRec.effects.length ? ': ' + ksRec.effects.join('; ') + '.' : '.') + ' A keystone species has an effect far larger than its abundance, like the sea star Pisaster, whose removal let mussels crowd out most other species.' })));
+    if (sp) { const ec = ecologyCard(sp); if (ec) main.append(ec); }
     const note = (sp && sp.note) || (P && P.note);
     if (note) main.append(el('div', { class: 'eco' }, el('b', { text: 'About this species' }), el('p', { text: note })));
     const eco = T.ECOLOGY[P ? 'producer' : sp.archetype];
     if (eco) main.append(el('div', { class: 'eco' }, el('b', { text: 'Real-world ecology · ' + eco.title.toLowerCase() }), el('p', { text: eco.text })));
+  }
+
+  // Ecology: interactions this round (with their +/0/− signs), the age and sex structure, measured efficiencies,
+  // keystone test history and what the steward has done to the species. Most of it needs the species Studied.
+  const SIGNS = { commensalism: '+ / 0', protocooperation: '+ / +', amensalism: '0 / −', parasitism: '+ / −', mutualism: '+ / +', competition: '− / −', predation: '+ / −' };
+  function ecologyCard(sp) {
+    const w = G.world, run = G.run, lv = UI.knowLevel(sp);
+    if (lv < 2) return null;
+    const card = el('div', { class: 'card pad-l cx-ecology' }, el('h3', { class: 'h-serif', text: 'Ecology' }));
+    // Interactions from the latest report that name this species.
+    const rep = run.report, items = rep && rep.interactions ? rep.interactions.items.filter(it => it.text.includes(sp.name)) : [];
+    if (lv >= 3) {
+      card.append(el('div', { class: 'eyebrow', text: 'Interactions last round' }));
+      card.append(items.length ? el('ul', { class: 'inter-list' }, items.map(it => el('li', null, el('span', { class: 'chip', text: SIGNS[it.type] || it.type }), el('span', { text: it.text }))))
+        : el('p', { class: 'caption', text: 'No notable interactions last round beyond feeding.' }));
+      // Age and sex structure.
+      card.append(el('div', { class: 'eyebrow', text: 'Age structure' }), agePyramid(sp));
+    } else card.append(el('p', { class: 'caption', text: 'Study it (surveys in 3 rounds, or a radio collar) to see its interactions and age structure.' }));
+    const eb = UI.efficiencyBlock(sp);
+    if (eb) card.append(eb);
+    const kh = (run.ksHistory || {})[sp.id] || [];
+    if (kh.length) card.append(el('div', { class: 'eyebrow', text: 'Keystone tests' }),
+      el('p', { class: 'caption', text: kh.slice(-6).map(k => 'Round ' + k.round + ': ' + (k.keystone ? '★ keystone, ' : '') + Math.round(k.drop * 100) + '% drop').join(' · ') }));
+    const mg = (run.mgmt || []).filter(m => m.species === sp.id);
+    card.append(el('div', { class: 'eyebrow', text: 'Management history' }),
+      mg.length ? el('ul', { class: 'mgmt-list' }, mg.slice(-10).reverse().map(m => el('li', null, el('b', { class: 'mono', text: 'R' + m.round }), ' ' + m.text)))
+        : el('p', { class: 'caption', text: 'Nothing done to it yet.' }));
+    return card;
+  }
+  // Juveniles, adults and elders by sex (individuals), or juveniles, adults and old (Populations).
+  function agePyramid(sp) {
+    const w = G.world;
+    let rows;
+    if (sp.grid) {
+      const g = sp.grid; let j = 0, a = 0, o = 0;
+      for (let i = 0; i < w.N * w.N; i++) { j += g.nJ[i]; a += g.nA[i]; o += g.nO[i]; }
+      rows = [['Old', o, null], ['Adults', a, null], ['Juveniles', j, null]];
+    } else {
+      const c = { J: [0, 0], A: [0, 0], E: [0, 0] };
+      for (const e of w.ents) if (e.alive && e.sp === sp) { const k = e.grow < 1 ? 'J' : e.age > e.life * 0.8 ? 'E' : 'A'; c[k][e.sex === 'F' ? 0 : 1]++; }
+      rows = [['Elders', c.E[0], c.E[1]], ['Adults', c.A[0], c.A[1]], ['Juveniles', c.J[0], c.J[1]]];
+    }
+    const top = Math.max(1, ...rows.map(r => Math.max(r[1], r[2] || 0)));
+    const box = el('div', { class: 'age-pyr' + (sp.grid ? ' single' : '') });
+    if (!sp.grid) box.append(el('div', { class: 'ap-row head' }, el('span', { text: 'females' }), el('span'), el('span', { text: 'males' })));
+    for (const [name, f, m] of rows) {
+      if (m == null) box.append(el('div', { class: 'ap-row' }, el('span', { class: 'lbl', text: name }), el('div', { class: 'bar' }, el('i', { style: { width: 100 * f / top + '%' } })), el('b', { class: 'mono', text: fmt(f) })));
+      else box.append(el('div', { class: 'ap-row' }, el('div', { class: 'bar left' }, el('i', { style: { width: 100 * f / top + '%' } }), el('b', { class: 'mono', text: String(f) })),
+        el('span', { class: 'lbl', text: name }), el('div', { class: 'bar' }, el('i', { style: { width: 100 * m / top + '%' } }), el('b', { class: 'mono', text: String(m) }))));
+    }
+    return box;
   }
 
   function traitRows(sp) {

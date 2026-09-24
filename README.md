@@ -64,6 +64,9 @@ Win a scenario by finishing with an average EHI of 70 or more and every restorat
 | `js/game.js` | Controller: New world setup, the Plan → Season → Report loop, events, the end of a run, saves, input |
 | `tools/headless.js` | Run one world in Node: `node tools/headless.js 10 12345 [meadow\|generated]` |
 | `tools/check-events.js` | Smoke tests: fixed trait sheets, events, save round-trip, refusing an older version's save, generator rules |
+| `js/overlays.js` | Map overlays: soil nitrogen (from soil tests), seral stage, vegetation layers, edge vs interior, soil water, soil carbon, harvest pressure, territories, survey coverage and staleness, land use |
+| `js/concepts.js` | The Codex's Concepts tab: textbook-neutral definitions of the ecology terms the game uses, and where each appears in play |
+| `tools/check-catalog-mix.js` | Catalog species-mix audit: can every catalog fill the slots its scenarios and Sandbox need? `node tools/check-catalog-mix.js [code …]` |
 | `js/stakeholders.js` | The steward's community: stakeholder types, asks, trust and the mandate, cost modifiers, land parcels, arrivals and departures, land sales and conservation easements |
 | `tools/check-stakeholders.js` | Stakeholder checks: the starting community, private land, asks, trust from actions, ally and opponent costs, the mandate and its loss condition, land sales, timber, water rights, the separate random stream, saves: `node tools/check-stakeholders.js` |
 | `tools/check-knowledge.js` | Knowledge checks: starting records, what each survey method detects and how accurate it is, combining surveys, staleness, studying and collars, sightings and discovery SP, the EHI range, instruments, the monitoring program, saves: `node tools/check-knowledge.js` |
@@ -223,6 +226,27 @@ Last `check-knowledge.js` run: all checks pass. 13 of 14 big-survey estimates fa
 - The community draws on its own random stream, so it never changes how the ecosystem plays out. The keystone worker now loads the steward modules, so its replays keep exclosures and harvest limits. Save version 9.
 
 Last `check-stakeholders.js` run: all checks pass.
+
+**P3-M8 part 1 (UI and classroom): built.**
+
+- **Map overlays** (picker at the map's top left, with a legend): soil nitrogen (only where a fresh soil test measured it), seral stage, vegetation layers, edge vs interior, soil water (with the water table if a well gauge is fresh), soil carbon, harvest pressure, territories, survey coverage and staleness, and land use.
+- **The energy chain** in the round report: the five textbook steps (GPP → NPP → ingested → GSP → NSP) through herbivores to carnivores, or for one surveyed species, on a log scale, each loss named with its efficiency and target band. **Textbook example** puts the 100,000-unit worked example beside the ecosystem's own chain rescaled to 100,000 units of GPP. The old flow diagram is the Consumer flow tab.
+- **Top bar:** the EHI with its trend, and the community's trust (the mandate).
+- **Realism** option on the New world screen (every efficiency in the textbook's range; runs are labelled Realism in the header, report and score). Experimental: not balanced yet.
+- **CSV export** from the report: efficiencies and the chain, the three pyramids, and demography (known species only; estimates where they aren't studied), every round so far.
+- **Concepts tab** in the Codex: 47 textbook-neutral entries in six topics, each with where it appears in play, related concepts, and a button to open the matching map overlay.
+
+**P3-M8 part 2 (UI and classroom): built.**
+
+- **Rapid responses** in the action bar during the season: an emergency survey placed on the map (1.5× the cost of point counts), a fire crew on call (lightning fires now strike in summer, not at the start of the round, and a crew holds one to a fifth of its size; a wildfire alert shows when one starts), and spot removal of 15% of a known non-native species.
+- **Watch list** (Season panel): species at risk (crashing this season, below a minimum viable population, or below ½K when studied), invasives and keystones, each with its survey status (sighted, surveyed N rounds ago, studied), then the biggest movers.
+- **Action cards** say when an action takes effect and which EHI components it tends to move (+, −, or either way).
+- **Harvest sliders** from 0 to half the estimate, with a tick at the take that would bring a studied species' estimate down to ½K.
+- **Inspector efficiency bars:** the species' assimilation and tissue growth this round against the target band (Surveyed species and up).
+- **Codex Ecology card** per species: last round's interactions with their +/0/− signs, the age and sex structure (juveniles, adults, elders by sex; or age classes for Populations), measured efficiencies, keystone test history and the steward's management history.
+- **Ecoregion map** on the New world screen: the 20 Level II ecoregions of the lower 48 (`build.js map` writes `js/catalogs/usmap.js` from the EPA outlines), coloured by biome where a catalog is built; click one to choose it. The Whittaker diagram sits beside it.
+
+**Catalog role guarantees.** Occurrence records follow what people photograph, so the most-recorded species left most catalogs with 0–1 native grasses (even the Temperate Prairies), few decomposers and few raptors. The builder now tops up each role that's short with its own per-cell GBIF query: native grasses (8), non-native grasses (2), native legumes (4), decomposers (6), raptors (4), scavengers (2) and apex predators (2). `build.js all --topup` adds them to built catalogs without rebuilding. `tools/check-catalog-mix.js` checks every catalog can fill its scenarios' and Sandbox's slots.
 
 **Meadow balance after retiring evolution.** Without evolution to mask it, the hands-off Meadow's herbivores crashed and its carnivores died out. Three causes, all fixed:
 

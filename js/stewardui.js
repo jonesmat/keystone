@@ -68,15 +68,51 @@ window.Trophic = window.Trophic || {};
     }
   }
 
+  // What each action tends to do: how soon, and which EHI components it usually moves (+ up, − down, ± either way,
+  // depending on the land). Predictions, not promises: the community decides.
+  SU.EFFECTS = {
+    'survey-count': { lag: 'at once', knowledge: true }, 'survey-camera': { lag: 'at once', knowledge: true }, 'survey-traps': { lag: 'at once', knowledge: true },
+    'survey-pitfall': { lag: 'at once', knowledge: true }, 'survey-water': { lag: 'at once', knowledge: true }, transect: { lag: 'at once', knowledge: true },
+    soiltest: { lag: 'at once', knowledge: true }, wellgauge: { lag: 'at once', knowledge: true }, collar: { lag: 'at once', knowledge: true }, monitor: { lag: 'every round', knowledge: true },
+    burn: { lag: '1–3 rounds', ehi: { habitat: '±', biodiversity: '+', cycles: '−' } },
+    shred: { lag: 'next round', ehi: { biodiversity: '+' } },
+    disc: { lag: '1–3 rounds', ehi: { cycles: '−', habitat: '−', biodiversity: '+' } },
+    overseed: { lag: '1–3 rounds', ehi: { biodiversity: '+', habitat: '+' } },
+    plant: { lag: '1–2 rounds', ehi: { biodiversity: '+', keystone: '+' } },
+    legumes: { lag: '1–2 rounds', ehi: { cycles: '+', energy: '+' } },
+    loosen: { lag: 'next round', ehi: { cycles: '+' } },
+    reforest: { lag: '5+ rounds', ehi: { habitat: '+', cycles: '+' } },
+    corridor: { lag: '3–5 rounds', ehi: { habitat: '+', viability: '+' } },
+    wetland: { lag: '1–2 rounds', ehi: { cycles: '+', biodiversity: '+' } },
+    buffer: { lag: '2–4 rounds', ehi: { cycles: '+' } },
+    exclosure: { lag: '1–3 rounds', ehi: { habitat: '+', energy: '+' } },
+    timber: { lag: 'at once', ehi: { habitat: '−', cycles: '−' } },
+    water: { lag: '2–5 rounds', ehi: { cycles: '+' } },
+    reintroduce: { lag: '2–5 rounds', ehi: { energy: '±', keystone: '+', biodiversity: '+', stability: '−' } },
+    translocate: { lag: 'next round', ehi: { viability: '+' } },
+    control: { lag: '2–4 rounds', ehi: { biodiversity: '+', stability: '+' } },
+    protect: { lag: 'every round', ehi: { viability: '+' } },
+    'rapid-survey': { lag: 'at once', knowledge: true }, firecrew: { lag: 'this season', ehi: { habitat: '+' } }, spot: { lag: 'at once', ehi: { biodiversity: '+' } },
+  };
+  SU.effectRow = function (id) {
+    const e = SU.EFFECTS[id];
+    if (!e) return el('span');
+    const row = el('div', { class: 'effects' }, el('span', { class: 'lag', text: 'Takes effect: ' + e.lag }));
+    if (e.knowledge) row.append(el('span', { class: 'chip', text: 'Knowledge: narrows the EHI range' }));
+    for (const c of St.COMPONENTS) if (e.ehi && e.ehi[c.key]) row.append(el('span', { class: 'chip ' + (e.ehi[c.key] === '+' ? 'up' : e.ehi[c.key] === '−' ? 'down' : ''), text: e.ehi[c.key] + ' ' + c.name }));
+    return row;
+  };
+
   const goalList = (goals) => el('ul', { class: 'goal-list' }, goals.map(g => el('li', { class: g.met ? 'met' : '' }, el('span', { class: 'tick', text: g.met ? '✓' : '○' }), el('span', null, g.text, el('small', { text: g.now })))));
 
   // ---------- right panel ----------
 
-  UI.renderStewardPanel = function () {
+  UI.renderStewardPanel = function (force) {
     const g = G(), w = g.world, run = g.run, box = $('steward-panel');
     if (!w || !run) return;
     const now = performance.now();
-    if (g.state === 'simulate' && SU.panelAt && now - SU.panelAt < 1000) return;   // the season view refreshes once a second
+    // The season view refreshes once a second, and not while a species is being picked for a rapid response.
+    if (g.state === 'simulate' && !force && SU.panelAt && (now - SU.panelAt < 1000 || (g.chosen && box.contains(document.activeElement)))) return;
     // In Plan, redraw only when something changed, so a harvest limit being typed isn't wiped out.
     const key = g.state + '|' + run.round + '|' + Math.round(run.sp) + '|' + g.chosen + '|' + run.queue.length + '|' + run.standing.length + '|' + JSON.stringify(run.harvest) + '|' + (run.ehiHistory.length) +
       '|' + (run.stake ? run.stake.asks.map(a => a.state).join() + (run.stake.sale ? 's' : '') + run.stake.mandate : '');
@@ -107,7 +143,7 @@ window.Trophic = window.Trophic || {};
     const a = g.chosen ? St.actionById(g.chosen) : null;
     if (a) {
       const card = el('div', { class: 'action-card card' }, el('div', { class: 'row between' }, el('b', { text: a.name }), el('button', { class: 'linklike', text: 'cancel', onclick: () => g.chooseAction(null) })),
-        el('p', { class: 'caption', text: a.desc }), el('p', { class: 'caption', text: 'Teaches: ' + a.teach }));
+        el('p', { class: 'caption', text: a.desc }), SU.effectRow(a.id), el('p', { class: 'caption', text: 'Teaches: ' + a.teach }));
       if (a.target === 'area') card.append(el('p', { class: 'note-teal', text: 'Click the map to place it (about ' + St.cost(w, a, { x: w.N / 2, y: w.N / 2, r: a.r }) + ' SP for a full circle; less at the edges).' }),
         a.method ? el('p', { class: 'caption', text: 'Detects: ' + T.Knowledge.METHODS[a.method].taxa + '.' }) : el('span'));
       else if (a.target === 'none') card.append(el('button', { class: 'btn primary small', disabled: run.sp < a.base || (a.id === 'monitor' && !run.queue.some(q => /^survey-/.test(q.id))),
@@ -137,17 +173,25 @@ window.Trophic = window.Trophic || {};
       box.append(ul);
     }
     // Harvest limits: a bag limit per round, against the species' carrying capacity.
-    box.append(el('h3', { class: 'h-serif', text: 'Harvest limits' }), el('p', { class: 'caption', text: 'Bag limits per round, set against your survey estimates. Yield is greatest near ½K; below ½K a harvest earns half and risks the population. Stale estimates risk overharvest.' }));
+    box.append(el('h3', { class: 'h-serif', text: 'Harvest limits' }), el('p', { class: 'caption', text: 'Bag limits per round, set against your survey estimates. Yield is greatest near ½K; below ½K a harvest earns half and risks the population. Stale estimates risk overharvest. For studied species the tick on the slider marks the take that would bring the estimate to ½K.' }));
     const pops = w.countPops().count, KN = T.Knowledge;
     const game = w.species.filter(sp => pops[sp.idx] > 0 && !sp.grid && !sp.transient && sp.level !== 'decomposer' && KN.level(run, sp) >= 2 &&
       (sp.domestic || (sp.meta && sp.meta.massKg >= 1) || (!sp.meta && sp.stats.mass >= 2.5)));
     const tbl = el('table', { class: 'harvest' }, el('tr', null, el('th', { text: 'Species' }), el('th', { text: 'N (est.) · K' }), el('th', { text: 'Limit' })));
     for (const sp of game) {
       const prot = w.protected && w.protected.has(sp.id), est = KN.estimate(run, sp), studied = KN.level(run, sp) >= 3;
-      const inp = el('input', { type: 'number', min: 0, max: Math.max(1, Math.round(est.N / 2)), value: run.harvest[sp.id] || 0, disabled: prot, 'aria-label': 'Harvest limit for ' + sp.name,
-        onchange: e => g.setHarvest(sp.id, +e.target.value) });
+      // A slider from 0 to half the estimate; what the population would be after the take is marked against ½K.
+      const max = Math.max(1, Math.round(est.N / 2)), cur = run.harvest[sp.id] || 0;
+      const num = el('input', { type: 'number', min: 0, max, value: cur, disabled: prot, 'aria-label': 'Harvest limit for ' + sp.name, onchange: e => g.setHarvest(sp.id, +e.target.value) });
+      const slider = el('input', { type: 'range', min: 0, max, step: 1, value: cur, disabled: prot, 'aria-label': 'Harvest limit slider for ' + sp.name,
+        oninput: e => { num.value = e.target.value; }, onchange: e => g.setHarvest(sp.id, +e.target.value) });
+      const halfK = studied && sp.K ? Math.round(sp.K / 2) : null;
+      // The take that would bring the estimate down to ½K, marked on the slider's track.
+      const toHalfK = halfK != null ? Math.max(0, Math.min(max, Math.round(est.N - halfK))) : null;
+      const track = el('div', { class: 'hv-slider' }, slider);
+      if (toHalfK != null) track.append(el('i', { class: 'halfk', title: 'Taking ' + toHalfK + ' brings the estimate to ½K (' + halfK + ')', style: { left: (100 * toHalfK / max) + '%' } }));
       tbl.append(el('tr', null, el('td', null, shapeIcon(sp.level, sp.hue), ' ' + sp.name + (sp.domestic ? ' (livestock)' : '') + (prot ? ' · protected' : '')),
-        el('td', { class: 'mono' + (est.age > 2 ? ' stale' : ''), text: fmt(est.N) + '±' + fmt(est.err) + ' · ' + (studied && sp.K ? Math.round(sp.K) : '?') }), el('td', null, inp)));
+        el('td', { class: 'mono' + (est.age > 2 ? ' stale' : ''), text: fmt(est.N) + '±' + fmt(est.err) + ' · ' + (studied && sp.K ? Math.round(sp.K) : '?') }), el('td', { class: 'hv-cell' }, track, num)));
     }
     box.append(game.length ? tbl : el('p', { class: 'caption', text: 'Survey a game species to set a harvest limit on it.' }));
     if (run.lastLog && run.lastLog.length) box.append(el('p', { class: 'caption', text: 'Last season: ' + run.lastLog.join('; ') }));
@@ -155,18 +199,58 @@ window.Trophic = window.Trophic || {};
 
   // During the season: the species that moved most, and what's being harvested.
   function renderWatch(box) {
-    const w = G().world, pops = w.countPops().count;
-    const rows = w.species.filter(sp => !sp.transient && UI.known(sp) && (w.rstats[sp.idx].startPop > 0 || pops[sp.idx] > 0))
-      .map(sp => ({ sp, n: pops[sp.idx], f: pops[sp.idx] / Math.max(1, w.rstats[sp.idx].startPop) }))
-      .sort((a, b) => Math.abs(Math.log((b.f + 0.05))) - Math.abs(Math.log((a.f + 0.05)))).slice(0, 10);
-    box.append(el('h3', { class: 'h-serif', text: 'Watch list' }), el('p', { class: 'caption', text: 'Species you know, by what you can see of them this season.' }));
-    const ul = el('ul', { class: 'watch' });
-    for (const r of rows) {
-      const cls = r.n === 0 ? 'gone' : r.f < 0.5 ? 'warn' : '';
-      ul.append(el('li', { class: cls }, shapeIcon(r.sp.level, r.sp.hue), el('span', { class: 'nm', text: r.sp.name }),
-        el('span', { class: 'val mono', text: T.Knowledge.abundance(r.n) }), el('small', { text: r.n === 0 ? 'unseen' : r.f < 0.5 ? 'fewer' : r.f > 1.5 ? 'more' : '' })));
+    const g = G(), w = g.world, pops = w.countPops().count;
+    const ra = g.chosen && St.RAPID.find(x => x.id === g.chosen);
+    if (ra) {
+      const card = el('div', { class: 'action-card card' }, el('div', { class: 'row between' }, el('b', { text: ra.name }), el('button', { class: 'linklike', text: 'cancel', onclick: () => g.chooseAction(null) })),
+        el('p', { class: 'caption', text: ra.desc }), SU.effectRow(ra.id));
+      if (ra.target === 'area') card.append(el('p', { class: 'note-teal', text: 'Click the map to survey there now.' }));
+      else {
+        const list = St.targets(w, ra), sel = el('select', { 'aria-label': 'Species' }, list.map(sp => el('option', { value: sp.id, text: sp.name })));
+        card.append(list.length ? sel : el('p', { class: 'caption', text: 'No non-native species you know of.' }),
+          el('button', { class: 'btn primary small', disabled: !list.length, text: 'Remove now · ' + ra.base + ' SP', onclick: () => g.rapid(ra.id, { species: sel.value }) }));
+      }
+      box.append(card);
     }
-    box.append(ul);
+    // The watch list: species at risk (below ½K, below a minimum viable population, or crashing this season),
+    // invasives and keystones, each with what the steward knows of it; then the rest of the biggest movers.
+    const run = g.run, KN = T.Knowledge;
+    const live = w.species.filter(sp => !sp.transient && UI.known(sp) && (w.rstats[sp.idx].startPop > 0 || pops[sp.idx] > 0));
+    const f = sp => pops[sp.idx] / Math.max(1, w.rstats[sp.idx].startPop);
+    const why = sp => {
+      const n = pops[sp.idx], lv = KN.level(run, sp);
+      if (n === 0) return 'unseen this season';
+      if (f(sp) < 0.5) return 'crashing';
+      if (n < St.mvp(sp)) return 'below a viable population';
+      if (lv >= 3 && sp.K && n < 0.5 * sp.K) return 'below ½K';
+      return null;
+    };
+    const status = sp => {
+      const lv = KN.level(run, sp), e = lv >= 2 ? KN.estimate(run, sp) : null;
+      return lv >= 3 ? 'studied' : lv === 2 ? 'surveyed' + (e && e.age ? ' ' + e.age + ' rd ago' : ' this round') : 'sighted';
+    };
+    const nonNative = sp => !sp.domestic && (sp.invasive || (sp.meta && sp.meta.native === false));
+    const groups = [
+      ['At risk', live.filter(sp => why(sp) && !nonNative(sp)), sp => why(sp)],
+      ['Invasive', live.filter(nonNative), sp => (f(sp) > 1.2 ? 'spreading' : '')],
+      ['Keystone', live.filter(sp => w.keystones && w.keystones[sp.id]), () => '★ tested'],
+    ];
+    const shown = new Set();
+    box.append(el('h3', { class: 'h-serif', text: 'Watch list' }), el('p', { class: 'caption', text: 'Species you know, by what you can see of them this season, with what your surveys tell you.' }));
+    const row = (sp, note, cls) => el('li', { class: cls || '' }, shapeIcon(sp.level, sp.hue), el('span', { class: 'nm', text: sp.name }),
+      el('span', { class: 'val mono', text: KN.abundance(pops[sp.idx]) }), el('small', { text: [note, status(sp)].filter(Boolean).join(' · ') }));
+    for (const [name, list, note] of groups) {
+      if (!list.length) continue;
+      const ul = el('ul', { class: 'watch' });
+      for (const sp of list.slice(0, 8)) { shown.add(sp.id); ul.append(row(sp, note(sp), name === 'At risk' ? (pops[sp.idx] === 0 ? 'gone' : 'warn') : '')); }
+      box.append(el('div', { class: 'eyebrow', text: name }), ul);
+    }
+    const movers = live.filter(sp => !shown.has(sp.id)).sort((a, b) => Math.abs(Math.log(f(b) + 0.05)) - Math.abs(Math.log(f(a) + 0.05))).slice(0, 6);
+    if (movers.length) {
+      const ul = el('ul', { class: 'watch' });
+      for (const sp of movers) ul.append(row(sp, f(sp) > 1.5 ? 'more' : f(sp) < 0.8 ? 'fewer' : '', ''));
+      box.append(el('div', { class: 'eyebrow', text: 'Moving most' }), ul);
+    }
     const h = w.harvested || {};
     const taken = Object.keys(h).filter(k => h[k].n >= 1).map(k => Math.round(h[k].n) + ' ' + w.species[+k].name + (h[k].cause === 'controlled' ? ' removed' : ' harvested'));
     if (taken.length) box.append(el('p', { class: 'caption', text: 'So far: ' + taken.join(', ') + '.' }));
@@ -178,8 +262,15 @@ window.Trophic = window.Trophic || {};
     const g = G(), bar = $('action-bar');
     bar.innerHTML = '';
     if (g.state !== 'plan') {
-      bar.append(el('div', { class: 'eyebrow', text: 'Season in progress' }), el('span', { class: 'caption', text: 'The community responds to this round’s actions. Click any animal, group or tile to inspect it.' }),
-        el('div', { class: 'bar-spacer' }));
+      // The season: rapid responses only.
+      const strip = el('div', { class: 'act-strip', role: 'toolbar', 'aria-label': 'Rapid responses' }, el('div', { class: 'eyebrow', text: 'Rapid responses' }));
+      for (const a of St.RAPID) {
+        const on = a.id === 'firecrew' && g.world.fireCrew;
+        strip.append(el('button', { class: 'dir-btn act' + (g.chosen === a.id || on ? ' active' : ''), disabled: on, title: a.name + ': ' + a.desc,
+          onclick: () => (a.target === 'none' ? g.rapid(a.id) : g.chooseAction(g.chosen === a.id ? null : a.id)) },
+          el('span', { class: 'txt' }, el('b', { text: a.name }), el('small', { text: on ? 'on call' : a.target === 'area' ? 'from ' + Math.round(a.base * 1.5) + ' SP' : a.base + ' SP' }))));
+      }
+      bar.append(strip, el('span', { class: 'caption', text: 'The season runs on. Click any animal, group or tile to inspect it.' }));
       return;
     }
     // Actions scroll sideways; Start season stays in reach.

@@ -99,6 +99,7 @@ window.Trophic = window.Trophic || {};
   G.setClimateTrend = function (on) { G.setup.climateTrend = !!on; };
   G.setPrimary = function (on) { G.setup.primary = !!on; };
   G.setChanging = function (on) { G.setup.changing = !!on; };
+  G.setRealism = function (on) { G.setup.realism = !!on; };
 
   G.cancelGen = function () { G.genToken = (G.genToken || 0) + 1; };
 
@@ -201,7 +202,7 @@ window.Trophic = window.Trophic || {};
     const seed = st.mode === 'generated' ? st.worldSeed || st.seed : st.seed;
     const scen = st.mode === 'catalog' && st.scenario ? T.scenarioById(st.scenario) : null;
     const biome = st.mode === 'catalog' ? st.roster.biome : B.biomes[st.mode === 'generated' ? st.biome : st.mode === 'channel' ? 'channel' : 'meadow'];
-    const world = T.createWorld({ seed, roster: st.roster, biome, debug: G.settings.debug,
+    const world = T.createWorld({ seed, roster: st.roster, biome, debug: G.settings.debug, mode: st.realism ? 'realism' : 'game',
       climateTrend: !!st.climateTrend || !!(scen && scen.climateTrend), primary: !!st.primary });
     G.world = world;
     G.renderer.fitted = false;
@@ -210,7 +211,9 @@ window.Trophic = window.Trophic || {};
       v: T.SAVE_VERSION, seed, mode: st.mode, biome: biome.id, ecoregion: st.mode === 'catalog' ? st.ecoregion : null,
       worldName: G.worldName(st), scenarioName: scen ? scen.name : null, seedString: st.mode === 'catalog' ? st.roster.seedString : null,
       activeEvents: [], pendingEvent: null, eventRolledRound: 0, eventThisRound: null, report: null,
+      realism: !!st.realism, records: [],
     });
+    if (run.realism) run.worldName += ' · Realism';
     G.run = run;
     G.enterPlan();
   };
@@ -254,11 +257,25 @@ window.Trophic = window.Trophic || {};
   G.placeAt = function (tx, ty) {
     const a = St.actionById(G.chosen);
     if (!a || a.target !== 'area') return;
+    if (a.cat === 'Rapid') return G.rapid(a.id, { x: tx, y: ty, r: a.r });
     const res = St.queue(G.world, G.run, { id: a.id, x: tx, y: ty, r: a.r });
     if (!res.ok) { UI().toast(res.why, 'bad'); return; }
     T.Audio.cue('buy');
     UI().toast(a.name + ' queued · ' + res.cost + ' SP');
     G.refreshMarks();
+    UI().updateHUD();
+  };
+  // Rapid responses act at once, mid-season.
+  G.rapid = function (id, q) {
+    const res = St.rapid(G.world, G.run, Object.assign({ id }, q || {}));
+    if (!res.ok) { UI().toast(res.why, 'bad'); return; }
+    T.Audio.cue('buy');
+    UI().toast(St.actionById(id).name + ': ' + res.text + ' · ' + res.cost + ' SP');
+    G.chosen = null;
+    $('world').classList.remove('placing');
+    G.renderer.brush = null;
+    UI().renderActionBar();
+    T.UI.renderStewardPanel(true);
     UI().updateHUD();
   };
   G.queueSpecies = function (id, spId) {
@@ -307,6 +324,7 @@ window.Trophic = window.Trophic || {};
     const run = G.run, w = G.world;
     w.beginRound(run.round);
     St.startSeason(w, run);   // after the round starts, so releases count as immigration (I) this round
+    G.seenDisturb = w.disturbLog ? w.disturbLog.length : 0;
     run.eventThisRound = null;
     if (run.pendingEvent) { G.applyEvent(run.pendingEvent); run.eventThisRound = { id: run.pendingEvent }; run.pendingEvent = null; }
     G.applyEventMods();
@@ -386,7 +404,12 @@ window.Trophic = window.Trophic || {};
     for (const ev of w.events) if (ev.type === 'kill') T.Audio.cue('kill');
     G.renderer.consumeEvents(w);
     // The brush follows the pointer while placing an area action.
-    const a = G.state === 'plan' && G.chosen && St.actionById(G.chosen);
+    // Wildfire alerts: a fire that started this frame.
+    if (G.state === 'simulate' && w.disturbLog && w.disturbLog.length > (G.seenDisturb || 0)) {
+      for (const d of w.disturbLog.slice(G.seenDisturb || 0)) if (d.type === 'wildfire' && d.tiles) UI().toast('Wildfire: ' + d.tiles + ' tiles burned' + (d.contained ? ', held by the fire crew' : ''), d.contained ? '' : 'bad');
+      G.seenDisturb = w.disturbLog.length;
+    }
+    const a = (G.state === 'plan' || G.state === 'simulate') && G.chosen && St.actionById(G.chosen);
     if (a && a.target === 'area' && G.mouse.inside) {
       const [wx, wy] = G.renderer.screenToWorld(G.mouse.x, G.mouse.y);
       G.renderer.brush = { x: wx / B.tilePx, y: wy / B.tilePx, r: a.r, color: 'rgba(31,42,36,0.9)', fill: 'rgba(245,197,66,0.18)', label: a.name + ' · ' + St.cost(w, a, { x: wx / B.tilePx, y: wy / B.tilePx, r: a.r }) + ' SP' };
@@ -435,9 +458,12 @@ window.Trophic = window.Trophic || {};
       view: res.view, discovered: res.discovered, community: res.community, mandate: res.mandate, stake: JSON.parse(JSON.stringify(run.stake.list)),
       round: run.round, ehi: res.ehi, deltas: res.deltas, goals: res.goals, income: res.income, parts: res.parts, outcome: res.outcome, gone: res.gone.filter(n => !hidden.includes(n)),
       interactions: inter ? JSON.parse(JSON.stringify(inter)) : null, keystone: ks, notes: w.notes.splice(0).filter(n => !mentionsHidden(n)),
-      demography: JSON.parse(JSON.stringify(w.demography || [])), energy: SU().combinedStats(w), lines,
+      demography: JSON.parse(JSON.stringify(w.demography || [])), energy: SU().combinedStats(w), measure: T.Energy.measure(w), lines,
       history: { t: w.history.t.slice(), pops: w.history.pops.map(r => r.slice()) },
     };
+    // What the CSV export reports for this round: efficiencies, the chain, the three pyramids, and demography for the
+    // species the steward knows (estimates only where they haven't studied a species).
+    (run.records || (run.records = [])).push(G.roundRecord(w, run, report));
     // Keystone tests fork the world and report during the next season.
     if (T.KeystoneRunner && !res.outcome) {
       const round = run.round;
@@ -445,6 +471,9 @@ window.Trophic = window.Trophic || {};
         ks.total = job.items.length; ks.done.push(r);
         ks.running = job.done.length < job.items.length;
         T.keystoneRecord(G.world, r, round);
+        // Each species' test history, for its Codex entry.
+        const kh = G.run.ksHistory || (G.run.ksHistory = {});
+        for (const id of r.ids) (kh[id] || (kh[id] = [])).push({ round, drop: +r.drop.toFixed(3), keystone: !!r.keystone });
         if (r.keystone && r.ids.some(id => { const sp = G.world.speciesById(id); return sp && T.Knowledge.known(G.run, sp); })) UI().toast('Keystone found: ' + r.name + '. Without it, diversity dropped ' + Math.round(r.drop * 100) + '%.', 'good');
         if (G.state === 'report' && G.run.report === report) S().renderInteractions(report);
       });
@@ -467,10 +496,59 @@ window.Trophic = window.Trophic || {};
     G.enterPlan();
   };
 
+  G.roundRecord = function (w, run, rep) {
+    const m = rep.measure, pyr = T.Energy.pyramids(w, UI().hiddenSpecies ? UI().hiddenSpecies() : null), KN = T.Knowledge;
+    const r4 = v => (v == null ? null : +(+v).toFixed(4));
+    const L = m.levels, prim = ['herbivore', 'omnivore'], pred = ['carnivore1', 'carnivore2'];
+    const sum = (ls, k) => ls.reduce((a, l) => a + L[l][k], 0);
+    const demog = [];
+    for (const d of rep.demography) {
+      const sp = w.speciesById(d.id);
+      if (!sp || !KN.known(run, sp)) continue;
+      const lv = KN.level(run, sp), est = KN.estimate(run, sp);
+      demog.push(lv >= 3 ? { species: d.name, sci: (sp.meta && sp.meta.sci) || '', level: d.level, knowledge: 'studied', N0: d.N0, B: d.B, I: d.I, D: d.D, E: d.E, N1: d.N1, r: d.r, K: d.K ? Math.round(d.K) : null, curve: d.curve }
+        : { species: d.name, sci: (sp.meta && sp.meta.sci) || '', level: d.level, knowledge: lv >= 2 ? 'surveyed' : 'sighted', N1: lv >= 2 && est ? Math.round(est.N) + ' ± ' + Math.round(est.err) : T.Knowledge.abundance(d.N1) });
+    }
+    return {
+      round: rep.round, mode: m.mode, ehiLow: rep.view.lo, ehiHigh: rep.view.hi,
+      eff: Object.fromEntries(Object.entries(m.eff).map(([k, v]) => [k, r4(v)])),
+      chain: { gpp: m.producers.gpp, npp: m.producers.npp, herbIngested: sum(prim, 'ingested'), herbGSP: sum(prim, 'assimilated'), herbNSP: sum(prim, 'nsp'),
+        carnIngested: sum(pred, 'ingested'), carnGSP: sum(pred, 'assimilated'), carnNSP: sum(pred, 'nsp') },
+      pyramids: pyr.levels.map((lv, k) => ({ level: lv.name, individuals: Math.round(pyr.numbers[k]), biomass: r4(pyr.biomass[k]), energy: Math.round(pyr.energy[k]) })),
+      demography: demog,
+    };
+  };
+
+  // CSV files for a lab write-up: every round so far, one table per file.
+  G.exportCSV = function (kind) {
+    const run = G.run, recs = run.records || [];
+    if (!recs.length) { UI().toast('Nothing to export until a round has finished', 'bad'); return; }
+    const q = v => (v == null ? '' : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
+    const rows = [];
+    if (kind === 'efficiencies') {
+      const keys = Object.keys(recs[0].eff), ck = Object.keys(recs[0].chain);
+      rows.push(['round', 'mode', 'ehi_low', 'ehi_high'].concat(ck.map(k => k + '_EU'), keys));
+      for (const r of recs) rows.push([r.round, r.mode, r.ehiLow, r.ehiHigh].concat(ck.map(k => Math.round(r.chain[k])), keys.map(k => r.eff[k])));
+    } else if (kind === 'pyramids') {
+      rows.push(['round', 'level', 'individuals', 'biomass_g_per_m2', 'energy_EU_fixed']);
+      for (const r of recs) for (const p of r.pyramids) rows.push([r.round, p.level, p.individuals, p.biomass, p.energy]);
+    } else {
+      rows.push(['round', 'species', 'scientific_name', 'level', 'knowledge', 'N0', 'B', 'I', 'D', 'E', 'N1', 'r_percent', 'K', 'curve']);
+      for (const r of recs) for (const d of r.demography) rows.push([r.round, d.species, d.sci, d.level, d.knowledge, d.N0, d.B, d.I, d.D, d.E, d.N1, d.r == null ? null : Math.round(d.r), d.K, d.curve]);
+    }
+    const csv = rows.map(r => r.map(q).join(',')).join('\n') + '\n';
+    const name = (run.worldName || 'keystone').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-' + kind + '.csv';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = name;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
   G.showEnd = function () {
     const run = G.run, o = run.outcome, sc = St.score(run), diff = B.difficulties[run.difficulty];
     if (T.KeystoneRunner) T.KeystoneRunner.cancel();
-    S().renderEnd({ round: run.round, difficulty: diff.name, title: o.win ? 'Restored' : o.kind === 'collapse' ? 'Collapse' : 'Out of time',
+    S().renderEnd({ round: run.round, difficulty: diff.name + (run.realism ? ' · Realism' : ''), title: o.win ? 'Restored' : o.kind === 'collapse' ? 'Collapse' : o.kind === 'mandate' ? 'Replaced' : 'Out of time',
       sub: o.headline + ' The true Ecosystem Health Index, round by round: ' + run.ehiHistory.join(', ') + '.', score: sc.total, rows: sc.rows });
     removeKey(SAVE_KEY);
     G.state = 'end';
@@ -599,7 +677,7 @@ window.Trophic = window.Trophic || {};
     let drag = null, pinch = null;
     const onMap = () => G.state === 'simulate' || G.state === 'plan';
     const local = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    const placing = () => G.state === 'plan' && G.chosen && St.actionById(G.chosen).target === 'area';
+    const placing = () => (G.state === 'plan' || G.state === 'simulate') && G.chosen && St.actionById(G.chosen).target === 'area';
     cv.addEventListener('contextmenu', e => e.preventDefault());
     cv.addEventListener('pointerdown', e => {
       if (!onMap()) return;

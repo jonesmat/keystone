@@ -91,6 +91,11 @@ window.Trophic = window.Trophic || {};
     $('btn-toggle-left').addEventListener('click', () => { $('panel-left').classList.toggle('open'); $('panel-right').classList.remove('open'); });
     $('btn-toggle-right').addEventListener('click', () => { $('panel-right').classList.toggle('open'); $('panel-left').classList.remove('open'); });
     $('zoom-in').addEventListener('click', () => { const r = G.renderer; r.zoomAt(r.w / 2, r.h / 2, 1.3); });
+    // Map overlays: pick a layer; the legend and a note on what's measured sit under the picker.
+    const ovSel = $('ov-select');
+    for (const L of T.Overlays.LAYERS) ovSel.append(el('option', { value: L.id, text: L.name }));
+    ovSel.addEventListener('change', () => UI.setOverlay(ovSel.value || null));
+    G.renderer.onOverlay = ov => UI.renderOverlayLegend(ov);
     $('zoom-out').addEventListener('click', () => { const r = G.renderer; r.zoomAt(r.w / 2, r.h / 2, 1 / 1.3); });
     // menu
     $('menu-resume').addEventListener('click', () => G.closeMenu());
@@ -151,6 +156,14 @@ window.Trophic = window.Trophic || {};
     $('tb-of').textContent = 'of ' + B.maxRounds + ' · ' + (G.state === 'plan' ? 'Plan' : 'Season');
     $('tb-sp').textContent = Math.round(run.sp);
     $('tb-ehi').textContent = run.ehiHistory.length && run.ehiView ? (run.ehiView.lo === run.ehiView.hi ? run.ehiView.lo : run.ehiView.lo + '–' + run.ehiView.hi) : '—';
+    // Trend from the midpoints of the last two ranges the steward saw.
+    const vh = run.ehiViewHistory || [], tr = $('tb-ehi-trend');
+    const d = vh.length >= 2 ? vh[vh.length - 1] - vh[vh.length - 2] : 0;
+    tr.textContent = vh.length < 2 ? '' : d >= 2 ? '▲' : d <= -2 ? '▼' : '▶';
+    tr.className = 'trend ' + (d >= 2 ? 'up' : d <= -2 ? 'down' : '');
+    const st = run.stake;
+    $('tb-trust').textContent = st && st.list.length ? st.mandate + '%' : '—';
+    $('tb-trust').className = 'mono' + (st && st.mandate < B.stakeholders.loseMandate + 10 ? ' warn' : '');
     // season bar
     const sb = $('tb-season');
     if (!sb.children.length) sb.append(el('div', { class: 'labels' }), el('div', { class: 'segs' }, el('i'), el('i'), el('i'), el('i')));
@@ -335,6 +348,8 @@ window.Trophic = window.Trophic || {};
     const hist = (r.history || []).slice(-3).map(h => 'Round ' + h.round + ': ' + h.text);
     box.append(el('p', { class: 'caption', text: (hist.length ? hist.join(' · ') + '. ' : 'Formed round ' + r.born + '. ') +
       (sp.grid ? 'Simulated as a Population: individuals can\'t be selected.' : 'The combined home ranges of its members.') }));
+    const eb = efficiencyBlock(sp);
+    if (eb) box.append(eb);
     const dg = demographyBlock(sp);
     if (dg) box.append(dg);
     UI.placeInspector(((r.tiles[0] % w.N) + 0.5), (((r.tiles[0] / w.N) | 0) + 0.5));
@@ -362,6 +377,29 @@ window.Trophic = window.Trophic || {};
       ['Litter', String(st.litter)], ['Speed · senses', (st.speed * 10).toFixed(1) + ' · ' + st.sight.toFixed(0) + ' tiles']];
     if (m && m.sci) rows.unshift(['Species', m.sci + (m.native === false ? ' · non-native' : '') + (m.iucn && !['LC', 'DD', 'NE'].includes(m.iucn) ? ' · IUCN ' + m.iucn : '')]);
     return el('div', { class: 'ins-kv trait-sheet' }, rows.map(([k, v]) => el('div', null, k + ' ', el('b', { text: v }))));
+  }
+
+  // The species' measured efficiencies this round, each on a 0–100% track with the target band shaded.
+  // Individuals don't keep energy books of their own; the species' round stats do.
+  UI.efficiencyBlock = sp => efficiencyBlock(sp);
+  function efficiencyBlock(sp) {
+    const w = G.world, rs = w.rstats[sp.idx];
+    if (!rs || rs.ingested <= 0 || UI.knowLevel(sp) < 2) return null;
+    const E = T.Energy, mode = w.mode.id;
+    const assim = rs.assimilated / rs.ingested, resp = rs.upkeepHeat + rs.digestHeat;
+    const tissue = rs.assimilated > 0 ? (rs.assimilated - resp) / rs.assimilated : null;
+    const ecto = !!(sp.stats && sp.stats.ecto);
+    const rows = [['Assimilation', assim, sp.level === 'herbivore' ? 'assimPlant' : 'assimMeat'], ['Tissue growth', tissue, ecto ? 'tissueEcto' : 'tissueEndo']];
+    const box = el('div', { class: 'eff-bars' }, el('div', { class: 'eyebrow', text: 'Efficiencies this round · ' + (ecto ? 'ectotherm' : 'endotherm') }));
+    for (const [name, v, key] of rows) {
+      const b = E.BANDS[key], r = b[mode] || b.text, ok = v != null && v >= r[0] && v <= r[1];
+      box.append(el('div', { class: 'eff-row', title: b.name + ': target ' + pct(r[0]) + '–' + pct(r[1]) + ' in ' + w.mode.name + ' mode' },
+        el('span', { text: name }),
+        el('div', { class: 'trk' }, el('i', { class: 'band', style: { left: 100 * r[0] + '%', width: 100 * (r[1] - r[0]) + '%' } }),
+          v != null ? el('i', { class: 'val' + (ok ? ' ok' : ''), style: { left: 100 * Math.max(0, Math.min(1, v)) + '%' } }) : el('span')),
+        el('b', { class: 'mono', text: v == null ? '—' : pct(v) })));
+    }
+    return box;
   }
 
   UI.renderInspector = function () {
@@ -404,6 +442,8 @@ window.Trophic = window.Trophic || {};
         })(),
         el('div', { style: { gridColumn: '1 / -1' } }, (STATE_TEXT[e.state] || (() => e.state))(e) + (e.E < B.starvationThreshold * st.maxE ? ' · starving' : ''))));
       box.append(el('div', { class: 'eyebrow', text: 'Trait sheet · fixed for the species' }), traitSheet(sp));
+      const eb = efficiencyBlock(sp);
+      if (eb) box.append(eb);
       const dg = demographyBlock(sp);
       if (dg) box.append(dg);
       UI.placeInspector(e.x, e.y);
@@ -461,6 +501,25 @@ window.Trophic = window.Trophic || {};
     box.style.left = x + 'px'; box.style.top = y + 'px';
   };
 
+  // ---------- map overlays ----------
+
+  UI.setOverlay = function (id) {
+    const r = G.renderer;
+    r.overlayId = id; r.overlay = null; r.dirtyTiles = true;
+    $('ov-select').value = id || '';
+    if (!id) $('ov-legend').hidden = true;
+  };
+  UI.renderOverlayLegend = function (ov) {
+    const box = $('ov-legend');
+    box.innerHTML = '';
+    box.hidden = !ov;
+    if (!ov) return;
+    const rgb = c => 'rgb(' + c.map(Math.round).join(',') + ')';
+    box.append(el('div', { class: 'ov-keys' }, ov.layer.legend.map(([name, c]) => el('span', null, el('i', { style: { background: rgb(c) } }), name))),
+      el('p', { text: ov.layer.caption }));
+    if (ov.note) box.append(el('p', { class: 'ov-note', text: ov.note }));
+  };
+
   // ---------- charts ----------
 
   // Sankey: sources → Eaten → {Assimilated, Egested}; Assimilated → {New tissue, Metabolism → heat}.
@@ -511,6 +570,74 @@ window.Trophic = window.Trophic || {};
     label(hNode.x + NW + 8, hNode.y + hNode.h / 2 - 4, 'Metabolism → heat', fmt(heat) + ' EU · ' + pct(heat / eaten));
     box.append(s);
     return gain / eaten;
+  };
+
+  // The energy chain as a ladder of steps. Bars are on a log scale (each gridline a factor of 10), since the chain
+  // loses orders of magnitude from GPP to carnivore tissue. Each step names the efficiency that links it to the one
+  // above and marks whether it's inside the mode's band. With opts.textbook, the textbook's 100,000-unit example and
+  // the ecosystem's own chain rescaled to 100,000 units of GPP sit beside it.
+  UI.drawChain = function (box, m, opts) {
+    opts = opts || {};
+    box.innerHTML = '';
+    const E = T.Energy, L = m.levels, mode = m.mode;
+    const band = key => { const b = E.BANDS[key]; const r = b && (b[mode] || b.text); return r ? pct(r[0]) + '–' + pct(r[1]) : ''; };
+    const div = (a, b) => (b > 0 ? a / b : null);
+    const sum = (ls, f) => ls.reduce((a, l) => a + f(L[l]), 0);
+    let steps;
+    if (opts.species) {
+      const r = m.species.find(x => x.id === opts.species);
+      if (!r) { box.append(el('p', { class: 'caption', text: 'No data for this species this round.' })); return; }
+      const endo = !r.ecto;
+      steps = [
+        { name: 'Ingested', v: r.ingested, note: 'Food eaten this round' },
+        { name: 'Assimilated (GSP)', v: r.assimilated, eff: div(r.assimilated, r.ingested), effName: 'Assimilation efficiency', key: r.level === 'herbivore' ? 'assimPlant' : 'assimMeat', loss: 'egested as feces → detritus' },
+        { name: 'New tissue (NSP)', v: Math.max(0, r.nsp), eff: r.tissue, effName: 'Tissue growth efficiency', key: endo ? 'tissueEndo' : 'tissueEcto', loss: 'respired as heat' + (r.thermo > 0 ? ' (' + pct(r.thermo / Math.max(1, r.respired)) + ' of it keeping warm)' : '') },
+      ];
+    } else {
+      const P = m.producers, prim = ['herbivore', 'omnivore'], pred = ['carnivore1', 'carnivore2'];
+      const hIn = sum(prim, o => o.ingested), hAs = sum(prim, o => o.assimilated), hNsp = Math.max(0, sum(prim, o => o.nsp));
+      const cIn = sum(pred, o => o.ingested), cAs = sum(pred, o => o.assimilated), cNsp = Math.max(0, sum(pred, o => o.nsp));
+      const plantsEaten = m.plantEaters, herbEaten = ['herbivore', 'omnivore'].reduce((a, s) => a + ((m.harvestOf[s] || {}).eaten || 0), 0);
+      steps = [
+        { name: 'Gross primary production (GPP)', v: P.gpp, tb: 'gpp', note: 'Sunlight fixed by photosynthesis' },
+        { name: 'Net primary production (NPP)', v: P.npp, tb: 'npp', eff: P.nppEff, effName: 'NPP efficiency', key: 'nppEff', loss: 'plant respiration' },
+        { name: 'Ingested by herbivores', v: hIn, tb: 'hIngested', eff: div(plantsEaten, P.npp), effName: 'Harvesting efficiency', key: 'harvest', loss: 'not eaten → litter and detritus' },
+        { name: 'Assimilated by herbivores (GSP)', v: hAs, tb: 'hGSP', eff: div(hAs, hIn), effName: 'Assimilation efficiency', key: 'assimPlant', loss: 'egested as feces' },
+        { name: 'Herbivore tissue (NSP)', v: hNsp, tb: ['hNSPecto', 'hNSPendo'], eff: div(hNsp, hAs), effName: 'Tissue growth efficiency', key: null, loss: 'respired as heat', sub: [['ectotherms', m.eff.tissueEcto, 'tissueEcto'], ['endotherms', m.eff.tissueEndo, 'tissueEndo']] },
+        { name: 'Ingested by carnivores', v: cIn, tb: 'cIngested', eff: div(herbEaten, hNsp), effName: 'Harvesting efficiency', key: null, loss: 'not eaten → carrion and old age' },
+        { name: 'Assimilated by carnivores (GSP)', v: cAs, tb: 'cGSP', eff: div(cAs, cIn), effName: 'Assimilation efficiency', key: 'assimMeat', loss: 'egested' },
+        { name: 'Carnivore tissue (NSP)', v: cNsp, tb: ['cNSPecto', 'cNSPendo'], eff: div(cNsp, cAs), effName: 'Tissue growth efficiency', key: null, loss: 'respired as heat' },
+      ];
+    }
+    const top = Math.max(1, steps[0].v);
+    const logW = v => (v > 0 ? Math.max(1.5, 100 * (1 + Math.log10(v / top) / 6)) : 0);   // 6 decades across the bar
+    const TB = {}; for (const r of E.TEXTBOOK) TB[r.key] = r;
+    const tbText = k => { const r = TB[k]; return r ? (r.lo === r.hi ? fmt(r.lo) : fmt(r.lo) + '–' + fmt(r.hi)) : ''; };
+    const head = el('div', { class: 'chain-row head' }, el('span', { text: 'Step' }), el('span', { text: 'Energy (log scale)' }), el('span', { class: 'mono', text: 'EU' }), el('span', { text: 'Efficiency · target band' }));
+    if (opts.textbook) head.append(el('span', { class: 'mono', text: 'Yours per 100,000' }), el('span', { class: 'mono', text: 'Textbook' }));
+    box.classList.toggle('with-tb', !!opts.textbook);
+    box.append(head);
+    const g0 = steps[0].v;
+    for (const s of steps) {
+      const ok = s.key && s.eff != null ? E.inBand(s.key, s.eff, mode) : null;
+      const effCell = el('span', { class: 'eff' });
+      if (s.eff != null) effCell.append(el('b', { class: ok === false ? 'off' : ok ? 'on' : '', text: s.effName + ' ' + pct(s.eff) }), s.key ? el('small', { text: ' · ' + band(s.key) }) : '');
+      else if (s.effName) effCell.append(el('span', { class: 'caption', text: s.effName + ': not measurable' }));
+      else effCell.append(el('span', { class: 'caption', text: s.note || '' }));
+      // Eating more than the level below produced means eating into its standing stock: that level is shrinking.
+      if (s.loss && s.eff != null && s.eff > 1) effCell.append(el('small', { class: 'loss', text: 'More than the level below produced: eating into its standing stock, so it is shrinking' }));
+      else if (s.loss && s.eff != null) effCell.append(el('small', { class: 'loss', text: 'Lost: ' + pct(1 - s.eff) + ' ' + s.loss }));
+      if (s.sub) for (const [nm, v, k] of s.sub) if (v != null) effCell.append(el('small', { class: 'loss', text: nm + ' ' + pct(v) + ' (band ' + band(k) + ')' }));
+      const row = el('div', { class: 'chain-row' }, el('span', { class: 'nm', text: s.name }), el('div', { class: 'bar' }, el('i', { style: { width: logW(s.v) + '%' } })),
+        el('span', { class: 'mono', text: fmt(s.v) }), effCell);
+      if (opts.textbook) {
+        row.append(el('span', { class: 'mono', text: !opts.species && g0 > 0 ? fmt(s.v * 100000 / g0) : '—' }),
+          el('span', { class: 'mono tb', text: s.tb ? (Array.isArray(s.tb) ? tbText(s.tb[0]) + ' ecto · ' + tbText(s.tb[1]) + ' endo' : tbText(s.tb)) : '—' }));
+      }
+      box.append(row);
+    }
+    if (opts.textbook) box.append(el('p', { class: 'caption', text: 'The textbook\u2019s example starts from 100,000 units of GPP. This ecosystem\u2019s chain is rescaled to the same start so the steps compare directly. ' +
+      (mode === 'game' ? 'Game mode scales some efficiencies up so the map can hold its predators; turn on Realism mode for the textbook\u2019s ranges.' : '') }));
   };
 
   function sourceColor(name) {

@@ -128,6 +128,9 @@ window.Trophic = window.Trophic || {};
         const det = Math.min(0.2, world.detr[i] / 500);
         r *= 1 - det; g *= 1 - det * 1.1; b *= 1 - det * 1.3;
       }
+      const ov = this.overlay;
+      if (ov && ov.alpha[i]) { const a = ov.alpha[i], o = i * 3; r += (ov.rgb[o] - r) * a; g += (ov.rgb[o + 1] - g) * a; b += (ov.rgb[o + 2] - b) * a; }
+      else if (ov) { r = r * 0.8 + 40; g = g * 0.8 + 40; b = b * 0.8 + 40; }   // outside the layer: washed out
       const j = i * 4;
       d[j] = r; d[j + 1] = g; d[j + 2] = b; d[j + 3] = 255;
     }
@@ -157,6 +160,12 @@ window.Trophic = window.Trophic || {};
   Renderer.prototype.draw = function (world, alpha, dt) {
     const ctx = this.ctx, c = this.cam, dpr = this.dpr;
     this.frame++;
+    // Map overlay (T.Overlays): recomputed when the layer changes and every 2 seconds or so.
+    if (this.overlayId && T.Overlays && (!this.overlay || this.overlay.id !== this.overlayId || this.frame - this.overlayAt > 120)) {
+      this.overlay = T.Overlays.compute(world, world.run, this.overlayId); this.overlayAt = this.frame; this.dirtyTiles = true;
+      if (this.onOverlay) this.onOverlay(this.overlay);
+    }
+    if (!this.overlayId && this.overlay) { this.overlay = null; this.dirtyTiles = true; }
     if (this.frame % 4 === 1 || this.dirtyTiles) { this._updateTiles(world); this.dirtyTiles = false; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#E7E0CD';

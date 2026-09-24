@@ -53,6 +53,7 @@ window.Trophic = window.Trophic || {};
     run.soilTests = [];      // { round, tiles, nh4, no3, moisture }
     run.wellGauge = null;    // { round, gw, recharge, withdrawal }
     run.monitoring = [];     // standing surveys repeated every round
+    run.surveyed = [];       // { x, y, r, round, method }: where surveys were done, for the coverage overlay
     const pops = w.countPops().count, rng = w.rng;
     const key = w.species.filter(sp => pops[sp.idx] > 0 && !sp.transient).map(sp => ({ sp, score: keyScore(w, sp, scenario) })).sort((a, b) => b.score - a.score);
     const n = KB().recordsMin + rng.int(KB().recordsMax - KB().recordsMin + 1);
@@ -134,6 +135,8 @@ window.Trophic = window.Trophic || {};
   K.survey = function (w, run, method, x, y, r) {
     const M = K.METHODS[method], St = T.Steward, pops = w.countPops().count;
     const land = St.tilesIn(w, x, y, r, false);
+    (run.surveyed || (run.surveyed = [])).push({ x, y, r, round: run.round, method });
+    if (run.surveyed.length > 120) run.surveyed.shift();
     const inArea = new Uint8Array(w.N * w.N);
     for (const i of land) inArea[i] = 1;
     let landN = 0, waterN = 0, aLand = 0, aWater = 0;

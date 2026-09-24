@@ -157,6 +157,13 @@ window.Trophic = window.Trophic || {};
 
   W._successionTick = function () {
     const P = S();
+    if (this.fireAt != null && this.t >= this.fireAt) {
+      this.fireAt = null;
+      // A crew on call holds the fire to a fifth of its size.
+      const size = Math.round((P.fireSize[0] + this.wrng.int(P.fireSize[1] - P.fireSize[0] + 1)) * B.areaScale * (this.fireCrew ? 0.2 : 1));
+      const f = this.wildfire(null, size);
+      if (f && f.tiles) f.contained = !!this.fireCrew;
+    }
     if (this.t % P.every !== 0) return;
     const n = this.N * this.N, N = this.N, dt = P.every / B.roundTicks;
     let changed = 0;
@@ -340,7 +347,8 @@ window.Trophic = window.Trophic || {};
     if (this.round <= 1 || !S().natural) return;
     const P = S(), c = this.biomeClass.id;
     const p = P.fireChance[c] != null ? P.fireChance[c] : 0.1;
-    if (this.wrng.next() < p) this.wildfire();
+    // Lightning strikes in summer: the fire waits for its tick, so a fire crew put on call during the season can meet it.
+    if (this.wrng.next() < p) this.fireAt = this.t + Math.round(B.roundTicks * (0.25 + 0.25 * this.wrng.next()));
     if (this.biomeClass.climax >= 4 && this.wrng.next() < P.windthrowChance) this.windthrow(P.windthrowShare * 0.5);
   };
 
@@ -365,12 +373,12 @@ window.Trophic = window.Trophic || {};
   const r1 = v => Math.round(v * 10) / 10;
   W._successionState = function () {
     return { som: Array.from(this.som, r1), sAge: Array.from(this.sAge, r1), bank: Array.from(this.bank), rock: Array.from(this.rock), burn: Array.from(this.burn),
-      disturbLog: this.disturbLog, gaps: this.gaps || 0 };
+      disturbLog: this.disturbLog, gaps: this.gaps || 0, fireAt: this.fireAt == null ? null : this.fireAt };
   };
   W._successionRestore = function (s) {
     this._initSuccession(false);
     this.som.set(s.som); this.sAge.set(s.sAge); this.bank.set(s.bank); this.rock.set(s.rock); this.burn.set(s.burn);
-    this.disturbLog = s.disturbLog; this.gaps = s.gaps;
+    this.disturbLog = s.disturbLog; this.gaps = s.gaps; this.fireAt = s.fireAt == null ? null : s.fireAt;
     this._successionCover();
   };
 })(window.Trophic);

@@ -173,6 +173,38 @@ function meadowChecks() {
     check(St.ehi(w3, r2).total >= 0, 'a saved run’s EHI can be computed after loading');
   }
 
+  console.log('\nRapid responses');
+  {
+    // Lightning strikes mid-season; a fire crew on call holds it to a fifth of its size. Same seed, crew vs none.
+    const burnt = crew => {
+      const { w, run } = meadow(T.Gen.hashSeed(9950, 1));
+      const chance = B.succession.fireChance;
+      B.succession.natural = true; B.succession.fireChance = new Proxy({}, { get: () => 1 });   // a fire every round
+      w.round = 2; w.beginRound(2); St.startSeason(w, run);
+      B.succession.fireChance = chance; B.succession.natural = false;
+      const at = w.fireAt, t0 = w.t;
+      if (crew) { run.sp = 99; St.rapid(w, run, { id: 'firecrew' }); }
+      while (!w.roundOver()) w.tick();
+      const f = w.disturbLog.find(d => d.type === 'wildfire');
+      return { at: at - t0, tiles: f ? f.tiles : 0, contained: !!(f && f.contained) };
+    };
+    const open = burnt(false), held = burnt(true);
+    check(open.at >= 0.25 * B.roundTicks && open.at <= 0.5 * B.roundTicks, 'lightning fires strike in summer, not at the start of the round (tick ' + open.at + ' of ' + B.roundTicks + ')');
+    check(held.contained && held.tiles > 0 && held.tiles <= Math.ceil(open.tiles * 0.35), 'a fire crew on call holds the fire to ' + held.tiles + ' tiles (' + open.tiles + ' without)');
+    const { w, run } = meadow(T.Gen.hashSeed(9950, 2));
+    const inv = w.species.find(sp => !sp.grid && sp.level !== 'decomposer');
+    inv.meta = Object.assign({}, inv.meta, { native: false });
+    run.know[inv.id] = { level: 2, sightings: [], estimates: [], surveyRounds: [], collared: null, found: 'test' };
+    run.sp = 99;
+    const n0 = w.countPops().count[inv.idx], sp0 = run.sp;
+    const r = St.rapid(w, run, { id: 'spot', species: inv.id });
+    const n1 = w.countPops().count[inv.idx];
+    check(r.ok && n0 - n1 === Math.ceil(n0 * 0.15) && sp0 - run.sp === r.cost, 'spot removal takes 15% of a non-native species at once (' + n0 + ' → ' + n1 + ', ' + r.cost + ' SP)');
+    const full = St.cost(w, St.actionById('survey-count'), { x: w.N / 2, y: w.N / 2, r: 5 });
+    const rs = St.rapid(w, run, { id: 'rapid-survey', x: w.N / 2, y: w.N / 2, r: 5 });
+    check(rs.ok && Math.abs(rs.cost - full * 1.5) <= 1 && run.surveyed.length > 0, 'an emergency survey runs at once at 1.5× the cost (' + rs.cost + ' vs ' + full + ' SP)');
+  }
+
   if (failures) { console.log('\n' + failures + ' steward check(s) failed'); process.exit(1); }
   console.log('\nall steward checks passed');
 }
