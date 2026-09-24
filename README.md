@@ -196,4 +196,13 @@ Last `check-interactions.js` run: all checks pass. Removing the Edwards Plateau 
 - **Win, loss and score:** finish 30 rounds with an average EHI of 70 or more and every goal met; lose if the EHI stays below 30 for 2 rounds or producers collapse. Score = average EHI × rounds + 40 per species recovered and per reintroduction − 40 per avoidable extinction, times the difficulty.
 - **Not yet:** knowledge levels and surveys (part 2) and stakeholders, trust and land sales (part 3). The steward currently sees everything.
 
-Last `check-steward.js` run: all checks pass. **Open: the hands-off Meadow is producer-limited.** Without evolution to mask it, herbivores crash in 4 of 6 hands-off seeds and carnivores die out in nearly all of them. NPP halves over 6 rounds as plants become nitrogen-limited (3% → 32% of the time). Game mode's endotherm tissue growth reads 3.3% and plants → herbivores 7.4% (bands 6–12% and 8–15%). **Realism mode isn't balanced yet.**
+Last `check-steward.js` run: all checks pass.
+
+**Meadow balance after retiring evolution.** Without evolution to mask it, the hands-off Meadow's herbivores crashed and its carnivores died out. Three causes, all fixed:
+
+- Decomposer Populations kept all they assimilated (individual decomposers respire 70%), so the Rotmites locked up about 40% of the world's nitrogen in their bodies and plants were nitrogen-limited 32% of the time. Now they respire like individual decomposers; nitrogen limitation is 13–17%.
+- Open water never denitrified, so leached nitrate piled up in lakes. Its sediments now denitrify (`nitrogen.sedimentDenit`).
+- Warm-blooded herbivores spent 73–79% of their upkeep staying warm, so the Meadow's cold-blooded omnivores beat them to every plant. The Game mode heat cost (`thermoCoef`) is down from 0.009 to 0.0055.
+
+Over 6 hands-off seeds every trophic level now survives the test in every seed (herbivores 28–111, apex predators 2–6). Game mode's plants → herbivores transfer is 9.3% (in band); endotherm tissue growth is 13.5% (just above its 6–12% band) and herbivores → carnivores 5.7% (below its band). The energy pyramid's bars are now to scale (linear), with each row's share passed up printed beside it.
+**Realism mode isn't balanced yet.**

@@ -174,7 +174,8 @@ window.Trophic = window.Trophic || {};
   };
 
   // Pyramids of numbers, biomass and energy (textbook levels, top row first). Numbers and biomass may invert;
-  // energy always narrows. Bars use a log scale because the levels span several orders of magnitude.
+  // energy always narrows. Bars are to scale (linear), as in the textbook: the upper levels are slivers, and each
+  // row's ▲ label gives the share passed up from the level below.
   UI.pyrKind = 'energy';
   UI.pyrAt = 0;
   const PYR_CAPTION = {
@@ -202,10 +203,10 @@ window.Trophic = window.Trophic || {};
     $('pyr-caption').textContent = PYR_CAPTION[kind];
     const pd = T.Energy.pyramids(w);
     const vals = pd[kind];
-    const logMax = Math.log10(1 + Math.max(1, ...vals));
+    const max = Math.max(1, ...vals);
     for (const row of box.children) {
       const k = +row.dataset.k, v = vals[k];
-      row.querySelector('.pyr-bar').style.width = (v > 0 ? 6 + 94 * (Math.log10(1 + v) / logMax) : 0) + '%';
+      row.querySelector('.pyr-bar').style.width = (v > 0 ? Math.max(1.5, 100 * v / max) : 0) + '%';
       const text = kind === 'biomass' ? (v >= 10 ? fmt(v) : v.toFixed(v >= 1 ? 1 : 2)) + ' g/m²' : kind === 'energy' ? fmt(v) + ' EU' : v >= 10 ? fmt(v) : v.toFixed(v > 0 ? 2 : 0);
       row.querySelector('b').textContent = text;
       // Energy: the share passed up from the level below (the 10% rule).

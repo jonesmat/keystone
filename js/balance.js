@@ -102,7 +102,7 @@ Trophic.BALANCE = {
   litterRate: 0.0005,       // share of standing crop shed as litter per tick, so uneaten NPP feeds decomposers
   bodyTemp: 38,             // endotherm body temperature, °C
   insulationRef: 28,        // body-to-air difference (°C) at the annual mean that thermoCoef was tuned for (the Meadow, 10 °C)
-  thermoCoef: 0.009,        // c_thermo in U = c × M^0.67 × max(0, T_body − T_air), before upkeepScale (tuned by tools/check-energy.js)
+  thermoCoef: 0.0055,        // c_thermo in U = c × M^0.67 × max(0, T_body − T_air), before upkeepScale (tuned by tools/check-energy.js)
   metabScale: 2.9,          // time-based metabolism that replaces the per-meal P (field metabolic rate)
   levelMetab: { herbivore: 1.0, omnivore: 1.05, carnivore1: 1.0, carnivore2: 0.3, decomposer: 1.0 },   // predators' hunting cost
   apexRestP3: 0.3,          // apex predators rest most of the day: scales their whole metabolism, thermoregulation included
