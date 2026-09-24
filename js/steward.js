@@ -59,7 +59,10 @@ window.Trophic = window.Trophic || {};
     w.bareHold = new Uint8Array(w.N * w.N);
     w.harvest = {};
     w.protected = new Set();
+    w.run = run;
+    T.Knowledge.init(w, run, scenario);
     run.ehi = St.ehi(w, run);
+    run.ehiView = T.Knowledge.ehiRange(w, run, run.ehi);
     return run;
   };
 
@@ -223,6 +226,26 @@ window.Trophic = window.Trophic || {};
 
   // Area actions take a centre and radius (tiles); species actions take a species id.
   St.ACTIONS = [
+    { id: 'survey-count', cat: 'Monitor', name: 'Point counts', target: 'area', r: 6, base: 3, perTile: 0.02, method: 'count', teach: 'Managers track estimates, not exact counts',
+      desc: 'Counts along transects: birds and large mammals seen or heard. Gives an estimate of N with an error bar.' },
+    { id: 'survey-camera', cat: 'Monitor', name: 'Camera traps', target: 'area', r: 6, base: 4, perTile: 0.02, method: 'camera', teach: 'Detection probability',
+      desc: 'Cameras catch nocturnal and cryptic mammals that counts miss.' },
+    { id: 'survey-traps', cat: 'Monitor', name: 'Live traps and mist nets', target: 'area', r: 5, base: 4, perTile: 0.03, method: 'traps', teach: 'Mark and recapture',
+      desc: 'Small mammals, bats and songbirds, caught, counted and released.' },
+    { id: 'survey-pitfall', cat: 'Monitor', name: 'Pitfalls and soil cores', target: 'area', r: 5, base: 3, perTile: 0.02, method: 'pitfall', teach: 'Sampling small taxa',
+      desc: 'Invertebrates, decomposers, reptiles and amphibians: densities scaled up from the samples.' },
+    { id: 'survey-water', cat: 'Monitor', name: 'Dip nets and water sampling', target: 'area', r: 5, base: 3, perTile: 0.02, method: 'water', teach: 'Aquatic sampling',
+      desc: 'Aquatic animals and plankton in the water inside the area.' },
+    { id: 'transect', cat: 'Monitor', name: 'Vegetation transect', target: 'area', r: 6, base: 3, perTile: 0.01, teach: 'Monitoring restoration',
+      desc: 'Native vs non-native cover and the seed bank\u2019s make-up along the area.' },
+    { id: 'soiltest', cat: 'Monitor', name: 'Soil test', target: 'area', r: 5, base: 2, perTile: 0.01, teach: 'Nutrient limitation',
+      desc: 'Ammonium, nitrate and moisture on the area. Soil figures in the side panel need a test from the last 3 rounds.' },
+    { id: 'wellgauge', cat: 'Monitor', name: 'Well gauge', target: 'none', base: 3, teach: 'Groundwater, aquifers',
+      desc: 'The water table, and this round\u2019s recharge against withdrawal.' },
+    { id: 'collar', cat: 'Monitor', name: 'Radio collar', target: 'species', base: 6, who: 'known', teach: 'Home ranges',
+      desc: 'Tracks one individual\u2019s range, diet and fate, and makes its species Studied.' },
+    { id: 'monitor', cat: 'Monitor', name: 'Monitoring program', target: 'none', base: 0, standing: true, teach: 'Long-term monitoring',
+      desc: 'Repeats every survey queued this round, every round, at half their cost, so estimates never go stale.' },
     { id: 'burn', cat: 'Habitat', name: 'Prescribed burn', target: 'area', r: 5, base: 4, perTile: 0.03, teach: 'Succession, fire ecology',
       desc: 'Resets the patch to the grasses stage and clears litter, restarting secondary succession. Burned in spring, it sets back cool-season non-native grasses.' },
     { id: 'shred', cat: 'Habitat', name: 'Shred (mow)', target: 'area', r: 5, base: 3, perTile: 0.02, teach: 'Seed banks, disturbance',
@@ -262,6 +285,7 @@ window.Trophic = window.Trophic || {};
     if (a.target === 'area') return Math.round(a.base + a.perTile * tilesIn(w, target.x, target.y, target.r || a.r, false).length);
     return a.base;
   };
+  const isSurvey = q => /^survey-/.test(q.id);
 
   // Which species an action can target.
   St.targets = function (w, a) {
@@ -269,8 +293,10 @@ window.Trophic = window.Trophic || {};
     // Reintroduction brings back native wildlife that's gone from the map, not livestock or non-natives.
     if (a.who === 'pool') return w.species.filter(sp => !pops[sp.idx] && w.pool && w.pool[sp.id] && !w.pool[sp.id].regionallyExtinct && !sp.transient &&
       !sp.domestic && !sp.invasive && !(sp.meta && sp.meta.native === false));
-    if (a.who === 'nonnative') return w.species.filter(sp => pops[sp.idx] && (sp.invasive || (sp.meta && sp.meta.native === false)) && !sp.domestic);
-    return w.species.filter(sp => pops[sp.idx] && !sp.transient);
+    // Everything else needs the steward to know the species is there.
+    const known = sp => !T.Knowledge || !w.run || T.Knowledge.known(w.run, sp);
+    if (a.who === 'nonnative') return w.species.filter(sp => pops[sp.idx] && (sp.invasive || (sp.meta && sp.meta.native === false)) && !sp.domestic && known(sp));
+    return w.species.filter(sp => pops[sp.idx] && !sp.transient && known(sp));
   };
 
   // A producer to plant for an action: natives that suit the tile's moisture, by kind.
@@ -286,6 +312,21 @@ window.Trophic = window.Trophic || {};
   // Carry out an action now. Returns a short description of what happened.
   St.apply = function (w, run, q) {
     const a = St.actionById(q.id);
+    const KN = T.Knowledge;
+    if (a.method) {
+      const res = KN.survey(w, run, a.method, q.x, q.y, q.r || a.r);
+      const found = res.filter(x => x.discovered).map(x => x.sp);
+      run.discovered = (run.discovered || []).concat(found.map(sp => sp.id));
+      return res.length + ' species estimated' + (found.length ? '; new: ' + found.map(sp => sp.name).join(', ') : '');
+    }
+    if (a.id === 'transect') { const v = KN.vegetation(w, run, q.x, q.y, q.r || a.r); return Math.round(v.nativeShare * 100) + '% native cover, seed bank ' + Math.round(v.bankNative * 100) + '% native'; }
+    if (a.id === 'soiltest') { const t = KN.soilTest(w, run, q.x, q.y, q.r || a.r); return 'NH4 ' + t.nh4.toFixed(2) + ', NO3 ' + t.no3.toFixed(2) + ' per tile'; }
+    if (a.id === 'wellgauge') { const g = KN.wellGauge(w, run); return 'water table ' + Math.round(100 * g.gw / Math.max(1, g.ref)) + '% of normal'; }
+    if (a.id === 'monitor') {
+      run.monitoring = run.queue.filter(isSurvey).map(x => ({ id: x.id, x: x.x, y: x.y, r: x.r, cost: Math.ceil(x.cost / 2) }));
+      if (!run.standing.some(s => s.id === 'monitor')) run.standing.push({ id: 'monitor', started: true });
+      return run.monitoring.length + ' surveys repeat every round';
+    }
     if (a.target === 'area') return St.applyArea(w, run, a, q);
     const sp = w.speciesById(q.species);
     if (!sp) return 'species gone';
@@ -297,6 +338,7 @@ window.Trophic = window.Trophic || {};
       }
       case 'translocate': return w.immigrate(sp, ST().translocateGroup) + ' ' + sp.name + ' brought in';
       case 'control': { if (!run.standing.some(s => s.id === 'control' && s.species === sp.id)) run.standing.push({ id: 'control', species: sp.id }); return 'control of ' + sp.name + ' begins'; }
+      case 'collar': { const e = T.Knowledge.collar(w, run, sp); return e ? sp.name + ' #' + String(e.num).padStart(4, '0') + ' collared' : 'none to collar'; }
       case 'protect': { if (!run.standing.some(s => s.id === 'protect' && s.species === sp.id)) run.standing.push({ id: 'protect', species: sp.id }); w.protected.add(sp.id); run.harvest[sp.id] = 0; w.harvest[sp.idx] = 0; return sp.name + ' protected'; }
     }
     return '';
@@ -452,12 +494,22 @@ window.Trophic = window.Trophic || {};
 
   St.startSeason = function (w, run) {
     const log = [];
-    for (const q of run.queue) log.push(St.actionById(q.id).name + ': ' + St.apply(w, run, q));
+    w.run = run;
+    const monitored = run.standing.some(s => s.id === 'monitor');
+    const order = run.queue.filter(q => q.id !== 'monitor').concat(run.queue.filter(q => q.id === 'monitor'));
+    for (const q of order) log.push(St.actionById(q.id).name + ': ' + St.apply(w, run, q));
+    // A standing monitoring program repeats its surveys (paid at half cost) in the rounds after it starts.
+    if (monitored && !run.queue.some(q => q.id === 'monitor')) for (const m of run.monitoring || []) {
+      if (run.sp < m.cost) { log.push('Monitoring: not enough SP for ' + St.actionById(m.id).name); continue; }
+      run.sp -= m.cost;
+      log.push('Monitoring · ' + St.actionById(m.id).name + ': ' + St.apply(w, run, m));
+    }
     run.queue = [];
     // Standing orders cost every round.
     w.controlShare = {};
     for (const s of run.standing) {
       const a = St.actionById(s.id);
+      if (s.id === 'monitor') continue;   // paid per survey above
       if (s.id === 'control') w.controlShare[s.species] = ST().controlShare;
       if (!s.started) { s.started = true; continue; }
       run.sp -= a.base;
@@ -486,8 +538,13 @@ window.Trophic = window.Trophic || {};
       if (h && h.some(v => v > 0 && v < St.mvp(sp)) && pops[sp.idx] >= 2 * St.mvp(sp)) run.recovered.push(sp.id);
     }
     const prev = run.ehi;
+    // Chance sightings, and what the round's surveys discovered.
+    const seen = T.Knowledge.roundEnd(w, run);
+    const discovered = seen.concat((run.discovered || []).map(id => w.speciesById(id)).filter(Boolean));
+    run.discovered = [];
     const ehi = St.ehi(w, run);
     run.ehi = ehi;
+    run.ehiView = T.Knowledge.ehiRange(w, run, ehi);
     run.ehiHistory.push(ehi.total);
     // Income: a base grant, the value of what was harvested sustainably, and a bonus for a healthy ecosystem.
     const parts = [['Base grant', P.baseIncome]];
@@ -501,6 +558,7 @@ window.Trophic = window.Trophic || {};
       harvestSP += got;
       parts.push(['Harvest: ' + Math.round(h.n) + ' ' + sp.name + (sustainable ? '' : ' (below ½K: half value)'), got]);
     }
+    if (discovered.length) parts.push(['Discovered: ' + discovered.map(sp => sp.name).join(', '), T.Knowledge.discoverySP(discovered)]);
     if (ehi.total >= 70) parts.push(['Healthy ecosystem (EHI ≥ 70)', P.healthyBonus]);
     const income = Math.round(parts.reduce((a, p) => a + p[1], 0) * diff.income);
     if (diff.income !== 1) parts.push([diff.name + ' difficulty ×' + diff.income, income - parts.reduce((a, p) => a + p[1], 0)]);
@@ -522,7 +580,7 @@ window.Trophic = window.Trophic || {};
     }
     run.outcome = outcome;
     const deltas = ehi.components.map((c, k) => ({ key: c.key, name: c.name, points: c.points, weight: c.weight, delta: prev ? c.points - prev.components[k].points : 0, cause: c.cause }));
-    return { ehi, deltas, income, parts, goals, outcome, gone: gone.map(sp => sp.name) };
+    return { ehi, view: run.ehiView, deltas, income, parts, goals, outcome, gone: gone.map(sp => sp.name), discovered: discovered.map(sp => sp.name) };
   };
 
   // ---------- goals ----------

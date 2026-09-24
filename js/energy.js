@@ -168,7 +168,8 @@ window.Trophic = window.Trophic || {};
 
   // Numbers (individuals), biomass (standing crop, g/m²) and energy (EU fixed this round) per level, bottom first.
   // Numbers and biomass may invert; energy must narrow at every level, and `violations` lists any step that doesn't.
-  function pyramids(w) {
+  // hide: species indices to leave out (the steward's view omits species they haven't discovered).
+  function pyramids(w, hide) {
     const n = PYRAMID_LEVELS.length;
     const numbers = new Array(n).fill(0), biomass = new Array(n).fill(0), energy = new Array(n).fill(0);
     const row = {};
@@ -178,14 +179,14 @@ window.Trophic = window.Trophic || {};
     numbers[0] = w.plantCount();
     biomass[0] = (w.producerBiomass() * g) / area;
     for (const e of w.ents) {
-      if (!e.alive) continue;
+      if (!e.alive || (hide && hide.has(e.sp.idx))) continue;
       const k = row[e.sp.level];
       if (k == null) continue;   // decomposers sit beside the pyramid, not in it
       numbers[k]++;
       biomass[k] += ((e.E + e.tissue) * g) / area;
     }
     for (const sp of w.species) {
-      if (!sp.grid) continue;
+      if (!sp.grid || (hide && hide.has(sp.idx))) continue;
       const k = row[sp.level];
       if (k == null) continue;
       numbers[k] += sp.grid.total;
@@ -195,7 +196,7 @@ window.Trophic = window.Trophic || {};
     for (let t = 1; t < w.producers.length; t++) npp += w.pbook.npp[t];
     energy[0] = npp;
     w.species.forEach((sp, i) => {
-      if (sp.level === 'decomposer') return;
+      if (sp.level === 'decomposer' || (hide && hide.has(i))) return;
       const as = (w.rstats[i] && w.rstats[i].assimLv) || {};
       for (let k = 1; k < n; k++) for (const src of FIXED_FROM[k]) energy[k] += as[src] || 0;
     });

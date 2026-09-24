@@ -61,6 +61,18 @@ window.Trophic = window.Trophic || {};
 
   const UI = (T.UI = { el, svg, fmt, pct, plural, signed, shapeIcon, hiDPI });
   let G = null;
+  // What the steward knows about a species (knowledge levels: 0 unknown … 3 studied).
+  const KN = () => T.Knowledge;
+  UI.knowLevel = sp => (G && G.run && G.run.know ? KN().level(G.run, sp) : 3);
+  UI.known = sp => UI.knowLevel(sp) >= 1;
+  UI.hiddenSpecies = () => { const w = G.world, s = new Set(); if (w) for (const sp of w.species) if (!UI.known(sp)) s.add(sp.idx); return s; };
+  // A population figure as the steward knows it: an estimate ± error, a word, or nothing.
+  UI.popText = function (sp, trueN) {
+    const lv = UI.knowLevel(sp);
+    if (lv >= 2) { const e = KN().estimate(G.run, sp); return e ? '≈' + fmt(e.N) + ' ± ' + fmt(e.err) + (e.age > 0 ? ' (' + (e.age === 1 ? 'last round' : e.age + ' rounds old') + ')' : '') : '—'; }
+    if (lv === 1) return KN().abundance(trueN);
+    return '?';
+  };
 
   UI.init = function (game) {
     G = game;
@@ -138,7 +150,7 @@ window.Trophic = window.Trophic || {};
     $('tb-round').textContent = 'Round ' + run.round;
     $('tb-of').textContent = 'of ' + B.maxRounds + ' · ' + (G.state === 'plan' ? 'Plan' : 'Season');
     $('tb-sp').textContent = Math.round(run.sp);
-    $('tb-ehi').textContent = run.ehiHistory.length ? run.ehi.total : '—';
+    $('tb-ehi').textContent = run.ehiHistory.length && run.ehiView ? (run.ehiView.lo === run.ehiView.hi ? run.ehiView.lo : run.ehiView.lo + '–' + run.ehiView.hi) : '—';
     // season bar
     const sb = $('tb-season');
     if (!sb.children.length) sb.append(el('div', { class: 'labels' }), el('div', { class: 'segs' }, el('i'), el('i'), el('i'), el('i')));
@@ -201,7 +213,7 @@ window.Trophic = window.Trophic || {};
     const kind = UI.pyrKind;
     document.querySelectorAll('#pyr-tabs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.kind === kind)));
     $('pyr-caption').textContent = PYR_CAPTION[kind];
-    const pd = T.Energy.pyramids(w);
+    const pd = T.Energy.pyramids(w, UI.hiddenSpecies());
     const vals = pd[kind];
     const max = Math.max(1, ...vals);
     for (const row of box.children) {
@@ -227,14 +239,18 @@ window.Trophic = window.Trophic || {};
     const s = w.soilSummary();
     const row = (label, value) => el('div', { class: 'cy-row' }, el('span', { text: label }), el('b', { text: value }));
     const sign = v => (v >= 0 ? '+' : '−') + fmt(Math.abs(v));
-    const n = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Soil nitrogen' }),
-      row('Ammonium · nitrate', fmt(s.nh4) + ' · ' + fmt(s.no3)),
-      row('Fixed this round', '+' + fmt(s.fixation)),
-      row('Lost (denitrified, leached)', '−' + fmt(s.losses)));
-    if (s.nLimitedShare > 0.1) n.append(el('div', { class: 'cy-warn', text: 'Plant growth is nitrogen-limited ' + pct(s.nLimitedShare) + ' of the time' }));
+    // Soil and water figures come from the steward's own soil tests and well gauge (fresh for 3 rounds).
+    const run = G.run, tests = run && run.soilTests ? run.soilTests.filter(t => KN().fresh(run, t)) : [];
+    const n = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Soil nitrogen' }));
+    if (tests.length) {
+      const t = tests[tests.length - 1];
+      n.append(row('Ammonium · nitrate per tile', t.nh4.toFixed(2) + ' · ' + t.no3.toFixed(2)), row('Tested', t.round === run.round ? 'this round' : 'round ' + t.round + ' · ' + tests.length + ' area' + (tests.length > 1 ? 's' : '')));
+      if (t.nh4 + t.no3 < 1) n.append(el('div', { class: 'cy-warn', text: 'Low mineral nitrogen where tested: plants there are likely nitrogen-limited' }));
+    } else n.append(el('div', { class: 'cy-note', text: 'No recent soil test. Run one to see nitrogen and moisture.' }));
+    const gauge = run && KN().fresh(run, run.wellGauge) ? run.wellGauge : null;
     const water = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Water' }),
-      row('Soil moisture', pct(s.moisture)),
-      row('Water table, vs start', pct(s.waterTable)),
+      tests.length ? row('Soil moisture (tested)', pct(tests[tests.length - 1].moisture)) : el('span'),
+      gauge ? row('Water table, vs normal', pct(gauge.gw / Math.max(1, gauge.ref))) : el('div', { class: 'cy-note', text: 'No recent well gauge reading.' }),
       row('Compacted · waterlogged', pct(s.compactedShare) + ' · ' + pct(s.waterloggedShare)));
     const carbon = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Carbon' }),
       row(s.carbonBalance >= 0 ? 'Net sink this round' : 'Net source this round', sign(s.carbonBalance)),
@@ -256,7 +272,7 @@ window.Trophic = window.Trophic || {};
     declining: 'declining', recolonizing: 'recolonizing', absent: 'absent' };
   function demographyBlock(sp) {
     const w = G.world;
-    if (!w.demography) return null;
+    if (!w.demography || UI.knowLevel(sp) < 3) return null;   // K, curves and demography need the species Studied
     const d = w.demography.find(x => x.id === sp.id);
     const n = w.countPops().count[sp.idx];
     const pool = w.pool && w.pool[sp.id];
@@ -284,13 +300,18 @@ window.Trophic = window.Trophic || {};
 
   UI.renderRegionInspector = function (box, sel, close) {
     const w = G.world, sp = w.species[sel.region.sp];
+    if (sp && !UI.known(sp)) {
+      box.append(el('div', { class: 'ins-head' }, shapeIcon(sp.level, 0), el('b', { text: 'Unidentified ' + T.LEVELS[sp.level].short.toLowerCase() + 's' }), close),
+        el('p', { class: 'caption', text: 'Something lives here that you haven\u2019t identified. Try a survey method that suits small taxa.' }));
+      return;
+    }
     const r = sp && w.regionById(sp.idx, sel.region.id);
     if (!r) { box.hidden = true; G.renderer.selected = null; return; }
     box.append(el('div', { class: 'ins-head' }, shapeIcon(sp.level, sp.hue), el('b', { text: sp.name + ' · ' + r.label }),
       el('span', { class: 'caption', text: sp.grid ? '· Population' : '· group' }), close));
     const trend = r.n0 > 0 ? r.n / r.n0 - 1 : 0;
     const kv = el('div', { class: 'ins-kv' },
-      el('div', null, 'N ', el('b', { text: fmt(Math.round(r.n)) })),
+      el('div', null, 'N ', el('b', { text: UI.knowLevel(sp) >= 2 ? fmt(Math.round(r.n)) + ' (by survey)' : K_NAMES[UI.knowLevel(sp)] === 'sighted' ? T.Knowledge.abundance(r.n) : '?' })),
       el('div', null, 'Area ', el('b', { text: r.area + ' tiles' })),
       el('div', null, 'Density ', el('b', { text: (r.density || 0).toFixed(1) + ' / tile' })),
       el('div', null, 'Since round start ', el('b', { text: (trend >= 0 ? '+' : '') + Math.round(trend * 100) + '%' })));
@@ -331,6 +352,7 @@ window.Trophic = window.Trophic || {};
     seek: () => 'Looking for a mate', migrate: () => 'Migrating', swarm: () => 'Swarming to the marker', hide: () => 'Hiding', rest: () => 'Resting',
   };
 
+  const K_NAMES = ['unknown', 'sighted', 'surveyed', 'studied'];
   // A species' fixed trait sheet (Phase 3): real values where the catalog has them, else the game's.
   function traitSheet(sp) {
     const st = sp.stats, m = sp.meta;
@@ -355,6 +377,13 @@ window.Trophic = window.Trophic || {};
       UI.renderRegionInspector(box, sel, close);
       return;
     }
+    if (sel.ent && !UI.known(sel.ent.sp)) {
+      const e = sel.ent;
+      box.append(el('div', { class: 'ins-head' }, shapeIcon(e.sp.level, 0), el('b', { text: 'Unidentified ' + T.LEVELS[e.sp.level].short.toLowerCase() }), close),
+        el('p', { class: 'caption', text: 'You haven\u2019t identified this species. A survey that suits it, or a lucky sighting, will.' }));
+      UI.placeInspector(e.x, e.y);
+      return;
+    }
     if (sel.ent) {
       const e = sel.ent, sp = e.sp, st = e.st;
       const stage = e.grow < 1 ? 'juvenile' : e.age > e.life * 0.8 ? 'elder' : 'adult';
@@ -367,6 +396,8 @@ window.Trophic = window.Trophic || {};
         el('div', null, 'Offspring ', el('b', { text: String(e.offspring) })),
         el('div', null, 'Sex ', el('b', { text: (e.sex === 'F' ? 'female' : 'male') + (e.terr ? ' · territory' : '') + (e.emigrating ? ' · emigrating' : '') })),
         e.sp.parasiteHost ? el('div', null, 'Parasites ', el('b', { text: e.para.toFixed(1) + ' EU' })) : el('span'),
+        e.collared ? el('div', null, 'Radio collar ', el('b', { text: 'tracked' })) : el('span'),
+        el('div', null, 'Species ', el('b', { text: K_NAMES[UI.knowLevel(sp)] + ' · ' + UI.popText(sp, G.world.countPops().count[sp.idx]) })),
         (() => {
           const rid = sp.regionMap ? sp.regionMap[w.tileAt(e.x, e.y)] : 0, reg = rid && w.regionById(sp.idx, rid);
           return reg ? el('div', null, 'Group ', el('button', { class: 'linklike', text: reg.label + ' (' + reg.n + ')', onclick: () => { G.renderer.selected = { region: { sp: sp.idx, id: rid } }; UI.renderInspector(); } })) : el('span');

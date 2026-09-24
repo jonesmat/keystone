@@ -195,6 +195,9 @@ window.Trophic = window.Trophic || {};
     // creatures
     const sprites = tileScreen >= 38;
     const minX = tx0 - 1, maxX = tx1 + 2, minY = ty0 - 1, maxY = ty1 + 2;
+    // Species the steward hasn't identified show as grey shapes.
+    const run = world.run, unknown = new Set();
+    if (run && T.Knowledge) for (const sp of world.species) if (!T.Knowledge.known(run, sp)) unknown.add(sp.idx);
     const iconPx = Math.max(3.2, Math.min(9, tileScreen * 0.3));
     for (const e of world.ents) {
       if (!e.alive) continue;
@@ -205,7 +208,8 @@ window.Trophic = window.Trophic || {};
       const hidden = e.state === 'hide' || e.hideT > 0;
       ctx.globalAlpha = hidden ? 0.45 : 1;
       const r = (iconPx * (0.75 + 0.2 * Math.sqrt(e.st.mass)) * (e.grow < 1 ? 0.75 : 1)) / c.zoom;
-      if (sprites) this._drawSprite(e, x, y, tileScreen);
+      if (unknown.has(sp.idx)) this._drawIcon(sp.level, x, y, r, '#A3A39A', c.zoom);
+      else if (sprites) this._drawSprite(e, x, y, tileScreen);
       else this._drawIcon(sp.level, x, y, r, T.speciesColor(sp.level, sp.hue, 0), c.zoom);
       ctx.globalAlpha = 1;
     }

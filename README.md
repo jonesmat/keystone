@@ -58,11 +58,13 @@ Win a scenario by finishing with an average EHI of 70 or more and every restorat
 | `js/render.js` | World view: tile map, level-shape icons, Variation tint, close-up sprites, energy motes |
 | `js/ui.js` | HUD, pyramids and cycles panel, floating inspector, Sankey, population chart |
 | `js/screens.js` | New world, the round report, the Codex and the run end screen |
+| `js/knowledge.js` | What the steward knows: knowledge levels, chance sightings, survey methods and estimates, staleness, the previous steward's records, soil tests, well gauges, radio collars, and the EHI as a range |
 | `js/steward.js` | The steward's game: the Ecosystem Health Index, Stewardship Points, management actions, harvest limits, scenario damage and goals, win, loss and score |
 | `js/stewardui.js` | The steward panel (Plan: goals, action card, queue, harvest limits; Season: watch list) and the action bar |
 | `js/game.js` | Controller: New world setup, the Plan → Season → Report loop, events, the end of a run, saves, input |
 | `tools/headless.js` | Run one world in Node: `node tools/headless.js 10 12345 [meadow\|generated]` |
 | `tools/check-events.js` | Smoke tests: fixed trait sheets, events, save round-trip, refusing an older version's save, generator rules |
+| `tools/check-knowledge.js` | Knowledge checks: starting records, what each survey method detects and how accurate it is, combining surveys, staleness, studying and collars, sightings and discovery SP, the EHI range, instruments, the monitoring program, saves: `node tools/check-knowledge.js` |
 | `tools/check-steward.js` | Steward checks: the EHI, every management action, harvest limits, Rewilding's damage and goals, collapse, score and saves: `node tools/check-steward.js` |
 | `tools/catalog/build.js` | Builds an ecoregion catalog from open data (EPA ecoregions, GBIF occurrences and taxonomy, GRIIS, EltonTraits, USDA PLANTS, Open-Meteo), caching every download in `tools/catalog/cache/`: `node tools/catalog/build.js <9.3 \| 9.4.6 \| all> [--quota-scale 1.6]` |
 | `tools/check-catalog.js` | Phase 3 catalog draw checks: deterministic seeds, slot constraints, 60–150 species, a sane food web, stability with slot redraws, ledgers and tick cost: `node tools/check-catalog.js 9.4.6 songbird` |
@@ -194,9 +196,20 @@ Last `check-interactions.js` run: all checks pass. Removing the Edwards Plateau 
 - **The Ecosystem Health Index:** energy pyramid integrity (20), biodiversity (20), population stability (15), nutrient, water and carbon balance (15), keystone and mutualist presence (10), habitat structure (10) and small-population viability (10), each with its main cause.
 - **Scenarios** now set the damage the steward inherits (Rewilding: compacted soil, cattle overstocked 2.5×, a non-native brome monoculture on about 60% of the land) and restoration goals checked every round.
 - **Win, loss and score:** finish 30 rounds with an average EHI of 70 or more and every goal met; lose if the EHI stays below 30 for 2 rounds or producers collapse. Score = average EHI × rounds + 40 per species recovered and per reintroduction − 40 per avoidable extinction, times the difficulty.
-- **Not yet:** knowledge levels and surveys (part 2) and stakeholders, trust and land sales (part 3). The steward currently sees everything.
+- **Not yet:** stakeholders, trust, the mandate and land sales (part 3).
 
 Last `check-steward.js` run: all checks pass.
+
+**P3-M7 part 2 (what the steward knows): built.** In `js/knowledge.js`.
+
+- **Knowledge levels** per species: *Unknown* (acts on the map, drawn as a grey shape, absent from the Codex, watch list, pyramids, report and harvest table), *Sighted* (name, level, sketch, a coarse abundance word), *Surveyed* (an estimate of N ± error), *Studied* (surveyed in 3 rounds or radio-collared: K, diet and predators, demography terms and age structure).
+- **Sightings:** each round a species is seen by chance with probability 1 − exp(−0.05 × conspicuousness × √N), where conspicuousness grows with body mass and falls for nocturnal, canopy-dwelling and small pooled taxa. A new species earns 3 SP (8 if at risk).
+- **Survey methods** (new Monitor actions, painted on the map): point counts and transects (birds, large mammals), camera traps (nocturnal and cryptic mammals), live traps and mist nets (small mammals, bats, songbirds), pitfalls and soil cores (invertebrates, decomposers, reptiles, amphibians), dip nets and water sampling (aquatic animals). Each catches individuals in the area with its detection probability and scales up by the area's share of the habitat; the error combines sampling and patchiness. Two surveys in one round combine. Catching none in a small area is inconclusive, not zero. Also a vegetation transect (native vs non-native cover and seed bank), soil test and well gauge (the side panel's soil and water figures need one from the last 3 rounds), a radio collar (tracks one animal's fate and makes its species Studied), and a monitoring program that repeats this round's surveys every round at half cost.
+- **Staleness:** error bars widen by 15% of N a round; trend arrows fade after 2 rounds; after 5 rounds a species drops back to Sighted detail.
+- **The previous steward's records:** 5–10 key species (livestock, at-risk species, scenario key slots, apex predators, conspicuous species) start Surveyed with estimates 1–5 years old.
+- **The EHI as a range:** each component is certain only as far as the steward knows its inputs (surveyed share of species, sighted share, fresh soil tests and well gauges); the rest spans its full range. The true EHI, used for scoring, appears at the end. Harvest limits are set against estimates, so stale data risks overharvest.
+
+Last `check-knowledge.js` run: all checks pass. 13 of 14 big-survey estimates fall within two error bars of the truth; a blind start discovers 6 Meadow species by chance in 4 rounds; the EHI range goes from about 77 points wide to 78–85 (true 84) after surveying everything.
 
 **Meadow balance after retiring evolution.** Without evolution to mask it, the hands-off Meadow's herbivores crashed and its carnivores died out. Three causes, all fixed:
 

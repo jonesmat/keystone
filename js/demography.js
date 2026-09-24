@@ -150,6 +150,7 @@ window.Trophic = window.Trophic || {};
     const rs = this.rstats[e.sp.idx];
     rs.emig = (rs.emig || 0) + 1;
     rs.otherLoss += e.E + e.tissue;
+    if (e.collared) (this.collarFates = this.collarFates || {})[e.id] = { cause: 'emigrated', round: this.round, x: Math.round(e.x), y: Math.round(e.y) };
     this._releaseTerritory(e);
     const pool = this.pool[e.sp.id];
     if (pool) pool.level = Math.min(1, pool.level + 0.01);   // emigrants join the regional population

@@ -277,7 +277,8 @@ window.Trophic = window.Trophic || {};
   };
   G.setHarvest = function (spId, n) {
     const sp = G.world.speciesById(spId);
-    const max = Math.max(1, Math.round((sp.K || G.world.countPops().count[sp.idx]) / 2));
+    const est = T.Knowledge.estimate(G.run, sp);
+    const max = Math.max(1, Math.round((est ? est.N : 0) / 2));
     G.run.harvest[spId] = Math.max(0, Math.min(max, Math.round(n || 0)));
     UI().updateHUD();
   };
@@ -389,7 +390,7 @@ window.Trophic = window.Trophic || {};
   G.watchPops = function () {
     const w = G.world, pops = w.countPops().count, prev = G.lastPops || pops;
     w.species.forEach((sp, i) => {
-      if (prev[i] > 0 && pops[i] === 0 && !sp.transient) UI().toast(T.UI.plural(sp.name) + ' have died out here.', 'bad');
+      if (prev[i] > 0 && pops[i] === 0 && !sp.transient && T.UI.known(sp)) UI().toast(T.UI.plural(sp.name) + ' may have died out here.', 'bad');
     });
     G.lastPops = pops;
   };
@@ -408,13 +409,19 @@ window.Trophic = window.Trophic || {};
     const res = St.endRound(w, run);
     const pops = w.countPops().count;
     // The biggest movers for the population chart.
-    const lines = w.species.filter(sp => !sp.transient && w.rstats[sp.idx].startPop > 0)
+    const known = sp => T.Knowledge.known(run, sp);
+    const lines = w.species.filter(sp => !sp.transient && w.rstats[sp.idx].startPop > 0 && known(sp))
       .map(sp => ({ idx: sp.idx, name: sp.name, level: sp.level, hue: sp.hue, start: w.rstats[sp.idx].startPop, end: pops[sp.idx] }))
       .sort((a, b) => Math.abs(Math.log((b.end + 1) / (b.start + 1))) - Math.abs(Math.log((a.end + 1) / (a.start + 1)))).slice(0, 6);
     const ks = { running: true, total: 0, done: [] };
+    // The report shows only what the steward knows: no undiscovered species by name.
+    const hidden = w.species.filter(sp => !known(sp)).map(sp => sp.name);
+    const mentionsHidden = t => hidden.some(n => t.includes(n));
+    if (inter) inter.items = inter.items.filter(it => !mentionsHidden(it.text));
     const report = run.report = {
-      round: run.round, ehi: res.ehi, deltas: res.deltas, goals: res.goals, income: res.income, parts: res.parts, outcome: res.outcome, gone: res.gone,
-      interactions: inter ? JSON.parse(JSON.stringify(inter)) : null, keystone: ks, notes: w.notes.splice(0),
+      view: res.view, discovered: res.discovered,
+      round: run.round, ehi: res.ehi, deltas: res.deltas, goals: res.goals, income: res.income, parts: res.parts, outcome: res.outcome, gone: res.gone.filter(n => !hidden.includes(n)),
+      interactions: inter ? JSON.parse(JSON.stringify(inter)) : null, keystone: ks, notes: w.notes.splice(0).filter(n => !mentionsHidden(n)),
       demography: JSON.parse(JSON.stringify(w.demography || [])), energy: SU().combinedStats(w), lines,
       history: { t: w.history.t.slice(), pops: w.history.pops.map(r => r.slice()) },
     };
@@ -425,7 +432,7 @@ window.Trophic = window.Trophic || {};
         ks.total = job.items.length; ks.done.push(r);
         ks.running = job.done.length < job.items.length;
         T.keystoneRecord(G.world, r, round);
-        if (r.keystone) UI().toast('Keystone found: ' + r.name + '. Without it, diversity dropped ' + Math.round(r.drop * 100) + '%.', 'good');
+        if (r.keystone && r.ids.some(id => { const sp = G.world.speciesById(id); return sp && T.Knowledge.known(G.run, sp); })) UI().toast('Keystone found: ' + r.name + '. Without it, diversity dropped ' + Math.round(r.drop * 100) + '%.', 'good');
         if (G.state === 'report' && G.run.report === report) S().renderInteractions(report);
       });
       ks.total = T.KeystoneRunner.job ? T.KeystoneRunner.job.items.length : 0;
@@ -450,7 +457,8 @@ window.Trophic = window.Trophic || {};
   G.showEnd = function () {
     const run = G.run, o = run.outcome, sc = St.score(run), diff = B.difficulties[run.difficulty];
     if (T.KeystoneRunner) T.KeystoneRunner.cancel();
-    S().renderEnd({ round: run.round, difficulty: diff.name, title: o.win ? 'Restored' : o.kind === 'collapse' ? 'Collapse' : 'Out of time', sub: o.headline, score: sc.total, rows: sc.rows });
+    S().renderEnd({ round: run.round, difficulty: diff.name, title: o.win ? 'Restored' : o.kind === 'collapse' ? 'Collapse' : 'Out of time',
+      sub: o.headline + ' The true Ecosystem Health Index, round by round: ' + run.ehiHistory.join(', ') + '.', score: sc.total, rows: sc.rows });
     removeKey(SAVE_KEY);
     G.state = 'end';
     UI().show('end');
@@ -506,6 +514,7 @@ window.Trophic = window.Trophic || {};
       const w = T.loadWorld(data.world, { debug: G.settings.debug });
       G.world = w;
       G.run = data.run;
+      w.run = G.run;
       w.round = G.run.round;
       w.rebuildDiet();
       G.enterPlan();

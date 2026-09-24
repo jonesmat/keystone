@@ -264,6 +264,21 @@ Trophic.BALANCE = {
     scoreRecovered: 40, scoreReintroduced: 40, scoreExtinction: 40,
   },
 
+  // ---------- Phase 3: what the steward knows (js/knowledge.js) ----------
+  knowledge: {
+    recordsMin: 5, recordsMax: 10,   // key species in the previous steward's records
+    obviousAt: 3.5,         // species this conspicuous are already sighted at the start
+    sightRate: 0.05,        // chance sightings: 1 − exp(−rate × conspicuousness × √N) per round
+    patchiness: 0.2,        // extra error from uneven spacing, as a share of the estimate
+    zeroNeedsShare: 0.3,    // a survey catching none counts as an estimate of zero only if it covered this share of the habitat
+    stalePerRound: 0.15,    // error bars widen by this share of N each round without new data
+    trendFades: 2,          // trend arrows fade after this many rounds
+    staleAfter: 5,          // a Surveyed species drops back to Sighted detail after this many rounds
+    studyRounds: 3,         // surveyed in this many rounds makes a species Studied
+    instrumentFresh: 3,     // soil tests and well gauges show in the panel for this many rounds
+    discover: 3, discoverAtRisk: 8,   // SP for finding a species (more if it's at risk)
+  },
+
   // ---------- Phase 3: automatic keystone tests (js/keystone.js) ----------
   keystone: {
     rounds: 3,              // rounds each forked copy runs

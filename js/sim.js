@@ -1404,6 +1404,7 @@ window.Trophic = window.Trophic || {};
     if (e.terr) this._releaseTerritory(e);
     const rs = this.rstats[e.sp.idx];
     let key = cause;
+    if (e.collared) (this.collarFates = this.collarFates || {})[e.id] = { cause, by: by >= 0 && cause === 'k' ? this.species[by].name : null, round: this.round, x: Math.round(e.x), y: Math.round(e.y) };
     if (cause === 'k') key = 'k:' + (by >= 0 ? this.species[by].id : 'unknown');
     else if (cause === 'starved') key = 'starved@' + B.seasons[this.seasonIdx].name;
     rs.deaths[key] = (rs.deaths[key] || 0) + 1;
@@ -1627,7 +1628,7 @@ window.Trophic = window.Trophic || {};
     return {
       v: T.SAVE_VERSION, mode: this.mode.id, seed: this.seed, t: this.t, round: this.round, rng: this.rng.s, nextId: this.nextId,
       biome: this.biome, eventLight: this.eventLight, growthMod: this.growthMod, ectoSlowAll: this.ectoSlowAll, climate: this.climate,
-      cumulative: this.cumulative,
+      cumulative: this.cumulative, collarFates: this.collarFates || {},
       producers: this.producers.slice(1),
       species: this.species.map(s => {
         const o = {};
@@ -1639,7 +1640,7 @@ window.Trophic = window.Trophic || {};
       pE: Array.from(this.pE, r2), fruit: Array.from(this.fruit, r2), detr: Array.from(this.detr, r2),
       nutr: Array.from(this.nutr, r3), moist: Array.from(this.moist, r3), elev: Array.from(this.elev, r3),
       pgGrowth: Array.from(this.pgGrowth, r3), pgTough: Array.from(this.pgTough, r3), pgTol: Array.from(this.pgTol, r3),
-      ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, r2(e.tissue), r3(e.nT), r3(e.nS), e.sex, e.terr ? 1 : 0, e.id, r2(e.para)]),
+      ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, r2(e.tissue), r3(e.nT), r3(e.nS), e.sex, e.terr ? 1 : 0, e.id, r2(e.para), e.collared ? 1 : 0]),
       carrion: this.carrion.filter(c => c.alive).map(c => [r2(c.x), r2(c.y), r2(c.E), c.src, c.lv, r3(c.N)]),
       cycles: this._cyclesState(),
       demography: this._demographyState(),
@@ -1651,14 +1652,14 @@ window.Trophic = window.Trophic || {};
   };
 
   // Saves carry this version; any other is from an older game and isn't loaded (no migrations).
-  T.SAVE_VERSION = 7;
+  T.SAVE_VERSION = 8;
 
   T.loadWorld = function (s, opts) {
     if (!s || s.v !== T.SAVE_VERSION) throw new Error('This save is from an older version of Keystone and cannot be loaded');
     const w = new World({ seed: s.seed, debug: opts && opts.debug, biome: s.biome, mode: s.mode });
     w.t = s.t; w.round = s.round || 1; w.rng.s = s.rng; w.nextId = s.nextId;
     w.eventLight = s.eventLight; w.growthMod = s.growthMod; w.ectoSlowAll = s.ectoSlowAll; w.climate = s.climate || 1;
-    w.cumulative = s.cumulative;
+    w.cumulative = s.cumulative; w.collarFates = s.collarFates;
     w.setProducers(s.producers);
     for (const d of s.species) {
       const def = Object.assign({}, d, { genome: T.b64.decode(d.genome) });
@@ -1675,7 +1676,7 @@ window.Trophic = window.Trophic || {};
       const sp = w.species[a[0]];
       const counter = sp.counter;
       const e = w.spawn(sp, a[1], a[2], a[3], sp.genome, { grow: a[7], parents: a[12], tissue: a[13], nT: a[14] });
-      e.nS = a[15]; e.sex = a[16]; e.terr = !!a[17]; e.para = a[19];
+      e.nS = a[15]; e.sex = a[16]; e.terr = !!a[17]; e.para = a[19]; e.collared = !!a[20];
       idMap[a[18]] = e.id;
       sp.counter = counter;
       e.hp = a[4]; e.breedCd = a[5]; e.home = a[6]; e.age = a[8]; e.life = a[9]; e.num = a[10]; e.offspring = a[11];

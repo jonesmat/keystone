@@ -220,15 +220,19 @@ window.Trophic = window.Trophic || {};
     const ob = $('rp-outcome');
     ob.hidden = !rep.outcome;
     if (rep.outcome) { ob.className = 'outcome ' + (rep.outcome.win ? 'win' : 'lose'); ob.textContent = rep.outcome.headline; }
-    // EHI: each component's points, change and main cause.
-    $('rp-ehi-total').textContent = rep.ehi.total;
+    // EHI as the steward sees it: each component a range, with its cause where they know enough to say.
+    const SUI = T.StewardUI, v = rep.view;
+    $('rp-ehi-total').textContent = SUI.rangeTxt(v.lo, v.hi);
     const eb = $('rp-ehi'); eb.innerHTML = '';
-    for (const d of rep.deltas) {
-      eb.append(el('div', { class: 'ehi-row' }, el('span', { text: d.name }), el('div', { class: 'trk' }, el('i', { style: { width: (100 * d.points / d.weight) + '%' } })),
-        el('b', { class: 'mono', text: d.points.toFixed(0) + '/' + d.weight }),
-        el('span', { class: 'mono ' + (d.delta >= 0 ? 'pos' : 'neg'), text: rep.round > 1 ? (d.delta >= 0 ? '+' : '−') + Math.abs(d.delta).toFixed(1) : '' }),
-        el('small', { text: d.cause })));
-    }
+    v.components.forEach((c, k) => {
+      const d = rep.deltas[k];
+      eb.append(el('div', { class: 'ehi-row' }, el('span', { text: c.name }),
+        el('div', { class: 'trk' }, el('i', { style: { width: (100 * c.lo / c.weight) + '%' } }), el('i', { class: 'unc', style: { width: (100 * (c.hi - c.lo) / c.weight) + '%' } })),
+        el('b', { class: 'mono', text: SUI.rangeTxt(c.lo, c.hi) + '/' + c.weight }),
+        el('span', { class: 'mono ' + (d.delta >= 0 ? 'pos' : 'neg'), text: rep.round > 1 && c.known >= 0.5 ? (d.delta >= 0 ? '+' : '−') + Math.abs(d.delta).toFixed(1) : '' }),
+        el('small', { text: c.known >= 0.5 ? d.cause : 'Not enough data to say: survey more (' + Math.round(c.known * 100) + '% known)' })));
+    });
+    if (rep.discovered && rep.discovered.length) eb.append(el('p', { class: 'caption', text: 'New this round: ' + rep.discovered.join(', ') + '.' }));
     const gb = $('rp-goals'); gb.innerHTML = '';
     if (rep.goals.length) gb.append(el('h3', { class: 'h-serif', text: 'Restoration goals' }),
       el('ul', { class: 'goal-list' }, rep.goals.map(g => el('li', { class: g.met ? 'met' : '' }, el('span', { class: 'tick', text: g.met ? '✓' : '○' }), el('span', null, g.text, el('small', { text: g.now }))))));
@@ -248,13 +252,16 @@ window.Trophic = window.Trophic || {};
     // Demography for every species.
     const db = $('rp-demog'); db.innerHTML = '';
     const tbl = el('table', null, el('tr', null, ['Species', 'N0', 'B', 'I', 'D', 'E', 'N1', 'r', 'K', 'Curve'].map(h => el('th', { text: h }))));
-    const rows = rep.demography.filter(d => d.N0 > 0 || d.N1 > 0).sort((a, b) => (T.LEVEL_ORDER.indexOf(a.level) - T.LEVEL_ORDER.indexOf(b.level)) || b.N1 - a.N1);
+    // Studied species show every term; surveyed ones an estimate; sighted ones a word. Unknown species aren't listed.
+    const rows = rep.demography.filter(d => (d.N0 > 0 || d.N1 > 0) && w.speciesById(d.id) && UI.known(w.speciesById(d.id)))
+      .sort((a, b) => (T.LEVEL_ORDER.indexOf(a.level) - T.LEVEL_ORDER.indexOf(b.level)) || b.N1 - a.N1);
     for (const d of rows) {
-      const sp = w.speciesById(d.id);
-      tbl.append(el('tr', { class: d.N1 === 0 ? 'gone' : '' }, el('td', null, shapeIcon(d.level, sp ? sp.hue : 0), ' ' + d.name),
-        ...[d.N0, d.B, d.I, d.D, d.E, d.N1].map(v => el('td', { class: 'mono', text: fmt(v) })),
-        el('td', { class: 'mono ' + (d.r == null ? '' : d.r >= 0 ? 'pos' : 'neg'), text: d.r == null ? '—' : (d.r >= 0 ? '+' : '') + Math.round(d.r) + '%' }),
-        el('td', { class: 'mono', text: d.K ? fmt(d.K) : '—' }), el('td', { text: d.curve })));
+      const sp = w.speciesById(d.id), lv = UI.knowLevel(sp);
+      const cells = lv >= 3 ? [d.N0, d.B, d.I, d.D, d.E, d.N1].map(x => el('td', { class: 'mono', text: fmt(x) }))
+        : [el('td', { class: 'mono', text: '' }), el('td'), el('td'), el('td'), el('td'), el('td', { class: 'mono', text: UI.popText(sp, d.N1) })];
+      tbl.append(el('tr', { class: d.N1 === 0 && lv >= 2 ? 'gone' : '' }, el('td', null, shapeIcon(d.level, sp.hue), ' ' + d.name), ...cells,
+        el('td', { class: 'mono ' + (lv < 3 || d.r == null ? '' : d.r >= 0 ? 'pos' : 'neg'), text: lv < 3 || d.r == null ? '—' : (d.r >= 0 ? '+' : '') + Math.round(d.r) + '%' }),
+        el('td', { class: 'mono', text: lv >= 3 && d.K ? fmt(d.K) : '—' }), el('td', { text: lv >= 3 ? d.curve : ['', 'sighted', 'surveyed'][lv] })));
     }
     db.append(tbl);
     // Notes: what changed and why.
@@ -289,7 +296,8 @@ window.Trophic = window.Trophic || {};
     kbox.append(el('h3', { class: 'h-serif', text: 'Keystone tests' }),
       el('p', { class: 'caption', text: ks.total ? (ks.running ? 'Running during the next season: ' + ks.done.length + ' of ' + ks.total + ' done. ' : 'All ' + ks.total + ' done. ') +
         'Each test replays 3 rounds without the species; a drop of more than 25% in richness or diversity earns a badge.' : 'No candidates this round.' }));
-    const found = ks.done.filter(r => r.keystone), other = ks.done.filter(r => !r.keystone);
+    const knownRes = r => r.ids.some(id => { const sp = G.world.speciesById(id); return sp && UI.known(sp); });
+    const found = ks.done.filter(r => r.keystone && knownRes(r)), other = ks.done.filter(r => !r.keystone && knownRes(r));
     for (const r of found) kbox.append(el('div', { class: 'ks-row ks-yes' }, el('b', { text: '★ ' + r.name }), el('span', { text: ' −' + Math.round(r.drop * 100) + '% without it' + (r.effects.length ? ': ' + r.effects.join('; ') : '') })));
     if (other.length) kbox.append(el('p', { class: 'caption', text: 'Not keystone: ' + other.map(r => r.name.split(' (')[0] + ' (−' + Math.round(r.drop * 100) + '%)').join(', ') }));
   };
@@ -320,7 +328,7 @@ window.Trophic = window.Trophic || {};
   S.renderCodex = function (id) {
     const w = G.world, run = G.run, pops = w.countPops().count;
     const entries = w.producers.filter(Boolean).map(P => ({ id: P.id, name: P.name, level: 'producer', hue: P.hue, P }))
-      .concat(w.species.filter(sp => !sp.transient).map(sp => ({ id: sp.id, name: sp.name, level: sp.level, hue: sp.hue, sp, gone: !pops[sp.idx] })));
+      .concat(w.species.filter(sp => !sp.transient && UI.known(sp)).map(sp => ({ id: sp.id, name: sp.name, level: sp.level, hue: sp.hue, sp, gone: !pops[sp.idx] && UI.knowLevel(sp) >= 2 })));
     $('cx-sub').textContent = '· ' + entries.length + ' entries';
     const list = $('cx-list'); list.innerHTML = '';
     const groups = [['producer', 'Producers'], ['herbivore', 'Herbivores'], ['omnivore', 'Omnivores'], ['carnivore1', 'Carnivores'], ['carnivore2', 'Apex'], ['decomposer', 'Decomposers']];
@@ -343,18 +351,22 @@ window.Trophic = window.Trophic || {};
     const eyebrow = T.LEVELS[ent.level].short + ' · ' + (P ? T.PRODUCER_KINDS[P.kind].name + (P.habit ? ' · ' + P.habit : '') : sp.archetypeName || 'native');
     const n = sp ? w.countPops().count[sp.idx] : (w.cover ? w.cover[P.idx] : 0);
     const meta = (m && m.sci ? m.sci + ' · ' : '') + (m && m.native === false ? 'non-native · ' : '') + (m && m.iucn && !['LC', 'DD', 'NE'].includes(m.iucn) ? 'IUCN ' + m.iucn + ' · ' : '') +
-      (P ? n + ' tiles · stage: ' + T.SERAL_STAGES[P.stage] : n ? n + ' now' : 'gone from the map');
+      (P ? n + ' tiles · stage: ' + T.SERAL_STAGES[P.stage] : ['', 'Sighted', 'Surveyed', 'Studied'][UI.knowLevel(sp)] + ' · ' + UI.popText(sp, n));
     const links = el('div');
     const eats = [], eatenBy = [];
-    if (sp) {
+    const studied = !sp || UI.knowLevel(sp) >= 3;
+    if (sp && studied) {
       for (const f of sp.foods) { const pp = w.producerById(f); eats.push(pp ? { name: pp.name, level: 'producer', hue: pp.hue, id: pp.id } : { name: f[0].toUpperCase() + f.slice(1), level: f === 'fruit' ? 'producer' : 'decomposer', hue: 0 }); }
       for (const b of w.species) if (b !== sp && w.edible[sp.idx][b.idx]) eats.push({ name: b.name, level: b.level, hue: b.hue, id: b.id });
       for (const b of w.species) if (b !== sp && w.edible[b.idx][sp.idx]) eatenBy.push({ name: b.name, level: b.level, hue: b.hue, id: b.id });
     } else for (const b of w.species) if (b.foods.has(P.id)) eatenBy.push({ name: b.name, level: b.level, hue: b.hue, id: b.id });
     const chipRow = (label, items) => el('div', { class: 'link-row' }, el('span', { class: 'lbl', text: label }),
       items.length ? items.map(it => el('button', { onclick: it.id ? () => S.renderCodex(it.id) : null }, shapeIcon(it.level, it.hue), it.name)) : el('span', { text: 'nothing' }));
-    if (sp) links.append(chipRow('Eats', eats));
-    links.append(chipRow('Eaten by', eatenBy));
+    // Diet and predators are known once the species is Studied.
+    const knownLinks = list => list.filter(it => it.level === 'producer' || it.level === 'decomposer' || !w.speciesById(it.id) || UI.known(w.speciesById(it.id)));
+    if (sp && studied) links.append(chipRow('Eats', knownLinks(eats)));
+    if (studied) links.append(chipRow('Eaten by', knownLinks(eatenBy)));
+    else links.append(el('p', { class: 'caption', text: 'Study it (surveys in 3 rounds, or a radio collar) to learn its diet and predators.' }));
     main.append(el('div', { class: 'cx-hero' }, el('div', null, cv), el('div', null, el('div', { class: 'eyebrow', text: eyebrow }), el('h1', { text: ent.name }), el('p', { class: 'caption', text: meta }), links)));
     paintEntry(cv, sp, P);
     // Population history and the trait sheet.
@@ -366,7 +378,15 @@ window.Trophic = window.Trophic || {};
     for (const [k, v] of rows) table.append(el('tr', null, el('td', { text: k }), el('td', { text: v })));
     main.append(el('div', { class: 'cx-row' }, hist, el('div', { class: 'card pad-l' }, el('h3', { class: 'h-serif', text: 'Trait sheet' }), table,
       el('p', { class: 'caption', text: 'Traits are fixed for the species: one round is a year, far too short for evolution. Individuals differ only in age, sex, condition and position.' }))));
-    requestAnimationFrame(() => drawHistory(chart, sp ? run.popHistory[sp.id] || [] : null));
+    const collar = sp && run.know[sp.id] && run.know[sp.id].collared;
+    if (collar) {
+      const fate = w.collarFates && w.collarFates[collar.id];
+      main.append(el('div', { class: 'eco' }, el('b', { text: 'Radio collar · #' + String(collar.num).padStart(4, '0') + ' (collared round ' + collar.round + ')' }),
+        el('p', { text: fate ? 'Its collar stopped moving in round ' + fate.round + ': ' + (fate.cause === 'k' ? 'killed by ' + (fate.by ? plural(fate.by) : 'a predator') : fate.cause === 'emigrated' ? 'it left the map' : fate.cause.startsWith('starved') ? 'it starved' : fate.cause) + '.' : 'Still transmitting. Select it on the map to follow it.' })));
+    }
+    // Its history as the steward measured it: survey estimates by round.
+    const series = sp ? ((run.know[sp.id] || {}).estimates || []).filter(e => e.round >= 1).map(e => e.N) : null;
+    requestAnimationFrame(() => drawHistory(chart, series));
     const ksRec = w.keystones && w.keystones[ent.id];
     if (ksRec) main.append(el('div', { class: 'eco' }, el('b', { text: '★ Keystone species (tested round ' + ksRec.round + ')' }),
       el('p', { text: 'When the world was replayed for 3 rounds without ' + (ksRec.guild || ent.name) + ', the rest of the community lost ' + Math.round(ksRec.drop * 100) +

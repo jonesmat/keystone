@@ -296,6 +296,7 @@ window.Trophic = window.Trophic || {};
           if (f.slot.start === 'pool') { d.startPop = 0; pool.push(d.id); }
           if (f.slot.invader) d.invasive = true;
           if (f.slot.interior) d.flags.interior = true;   // nests only in interior woodland
+          if (f.slot.domestic) d.domestic = true;   // livestock: managed, not wildlife
           animals.push(d);
         }
       }
