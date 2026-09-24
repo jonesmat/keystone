@@ -61,6 +61,8 @@ window.Trophic = window.Trophic || {};
     w.protected = new Set();
     w.run = run;
     T.Knowledge.init(w, run, scenario);
+    T.Stakeholders.init(w, run, opts);
+    run.mandateLow = 0;
     run.ehi = St.ehi(w, run);
     run.ehiView = T.Knowledge.ehiRange(w, run, run.ehi);
     return run;
@@ -270,6 +272,10 @@ window.Trophic = window.Trophic || {};
       desc: 'Plants a vegetated strip along the water that catches runoff and the nitrate in it.' },
     { id: 'exclosure', cat: 'Habitat', name: 'Grazing exclosure', target: 'area', r: 4, base: 5, perTile: 0.04, teach: 'Harvesting efficiency, recovery',
       desc: 'Fences the patch against grazers and browsers for 3 rounds so plants can recover.' },
+    { id: 'timber', cat: 'Community', name: 'Timber harvest', target: 'area', r: 4, base: 2, perTile: 0.01, teach: 'Ecosystem services, disturbance',
+      desc: 'Cuts mature forest for sale: pays SP per tile cut and opens the canopy, restarting succession. Timber companies like it; conservationists don\u2019t.' },
+    { id: 'water', cat: 'Community', name: 'Cap irrigation', target: 'none', base: 10, teach: 'Groundwater, water rights',
+      desc: 'Buys back water rights: the draw on the aquifer falls by 40% for good. Irrigators lose out.' },
     { id: 'reintroduce', cat: 'Wildlife', name: 'Reintroduction', target: 'species', base: 20, teach: 'Keystone predators, trophic cascades', who: 'pool',
       desc: 'Releases a founding group from the regional pool, for example a returning apex predator.' },
     { id: 'translocate', cat: 'Wildlife', name: 'Translocation', target: 'species', base: 12, teach: 'Minimum viable populations', who: 'present',
@@ -281,9 +287,11 @@ window.Trophic = window.Trophic || {};
   ];
   St.actionById = id => St.ACTIONS.find(a => a.id === id);
 
+  // What an action costs: allies of the community make the actions they like cheaper, opponents the ones they dislike dearer.
   St.cost = function (w, a, target) {
-    if (a.target === 'area') return Math.round(a.base + a.perTile * tilesIn(w, target.x, target.y, target.r || a.r, false).length);
-    return a.base;
+    const f = T.Stakeholders ? T.Stakeholders.costFactor(w.run, a.id) : 1;
+    if (a.target === 'area') return Math.round((a.base + a.perTile * tilesIn(w, target.x, target.y, target.r || a.r, false).length) * f);
+    return Math.round(a.base * f);
   };
   const isSurvey = q => /^survey-/.test(q.id);
 
@@ -321,6 +329,7 @@ window.Trophic = window.Trophic || {};
     }
     if (a.id === 'transect') { const v = KN.vegetation(w, run, q.x, q.y, q.r || a.r); return Math.round(v.nativeShare * 100) + '% native cover, seed bank ' + Math.round(v.bankNative * 100) + '% native'; }
     if (a.id === 'soiltest') { const t = KN.soilTest(w, run, q.x, q.y, q.r || a.r); return 'NH4 ' + t.nh4.toFixed(2) + ', NO3 ' + t.no3.toFixed(2) + ' per tile'; }
+    if (a.id === 'water') { const before = w.irrigation || 0; w.irrigation = before * (1 - ST().waterCap); return before ? 'irrigation cut to ' + Math.round(100 * w.irrigation / before) + '% of what it was' : 'no irrigation to cap'; }
     if (a.id === 'wellgauge') { const g = KN.wellGauge(w, run); return 'water table ' + Math.round(100 * g.gw / Math.max(1, g.ref)) + '% of normal'; }
     if (a.id === 'monitor') {
       run.monitoring = run.queue.filter(isSurvey).map(x => ({ id: x.id, x: x.x, y: x.y, r: x.r, cost: Math.ceil(x.cost / 2) }));
@@ -346,7 +355,8 @@ window.Trophic = window.Trophic || {};
 
   St.applyArea = function (w, run, a, q) {
     const r = q.r || a.r;
-    let tiles = tilesIn(w, q.x, q.y, r, true);
+    // Private and developed land is off limits: the steward manages public land and conservation easements.
+    let tiles = tilesIn(w, q.x, q.y, r, true).filter(i => T.Stakeholders.manageable(w, i));
     // Protected species' ranges are off limits to fire and heavy work.
     if (['burn', 'disc', 'shred'].includes(a.id)) tiles = tiles.filter(i => !St.protectedTile(w, i));
     let n = 0;
@@ -403,6 +413,21 @@ window.Trophic = window.Trophic || {};
       case 'loosen': for (const i of tiles) { if (w.comp[i] > 0.05) n++; w.comp[i] = 0; } break;
       case 'wetland': for (const i of tiles) if (w.elev[i] <= w.waterLine + ST().wetlandRise) { w.wetland[i] = 1; w.sw[i] = 1; w.moist[i] = 1; n++; } break;
       case 'exclosure': for (const i of tiles) { w.exclosure[i] = ST().exclosureRounds; n++; } break;
+      case 'timber':
+        for (const i of tiles) {
+          const P = w.producers[w.ptype[i]];
+          if (!P || P.stage !== 4) continue;
+          // The logs leave the map; slash stays as litter.
+          const logs = w.pE[i] * 0.7, slash = w.pE[i] - logs;
+          w.ledger.exported += logs; w.nledger.exported += logs * P.nContent;
+          w.pE[i] = 0; w.detr[i] += slash; w.detrN[i] += slash * P.nContent;
+          w._clearTile(i);
+          n++;
+        }
+        run.timberTiles = (run.timberTiles || 0) + n;
+        run.timberSP = (run.timberSP || 0) + Math.round(n * ST().timberValue);
+        w._computeShade(); w.edgeDirty = true;
+        break;
     }
     w._successionCover();
     return n + ' tiles';
@@ -496,6 +521,8 @@ window.Trophic = window.Trophic || {};
     const log = [];
     w.run = run;
     const monitored = run.standing.some(s => s.id === 'monitor');
+    run.doneActions = run.queue.map(q => q.id);
+    run.timberTiles = 0; run.timberSP = 0;
     const order = run.queue.filter(q => q.id !== 'monitor').concat(run.queue.filter(q => q.id === 'monitor'));
     for (const q of order) log.push(St.actionById(q.id).name + ': ' + St.apply(w, run, q));
     // A standing monitoring program repeats its surveys (paid at half cost) in the rounds after it starts.
@@ -518,6 +545,8 @@ window.Trophic = window.Trophic || {};
     w.harvest = {};
     for (const id in run.harvest) { const sp = w.speciesById(id); if (sp && run.harvest[id] > 0 && !w.protected.has(id)) w.harvest[sp.idx] = run.harvest[id]; }
     w.harvested = {};
+    // The community reacts to what the steward does.
+    T.Stakeholders.onActions(run, run.doneActions.concat(run.standing.filter(x => x.id === 'protect' || x.id === 'control').map(x => x.id)));
     run.lastLog = log;
     return log;
   };
@@ -558,18 +587,25 @@ window.Trophic = window.Trophic || {};
       harvestSP += got;
       parts.push(['Harvest: ' + Math.round(h.n) + ' ' + sp.name + (sustainable ? '' : ' (below ½K: half value)'), got]);
     }
+    if (run.timberSP) parts.push(['Timber: ' + run.timberTiles + ' tiles', run.timberSP]);
     if (discovered.length) parts.push(['Discovered: ' + discovered.map(sp => sp.name).join(', '), T.Knowledge.discoverySP(discovered)]);
     if (ehi.total >= 70) parts.push(['Healthy ecosystem (EHI ≥ 70)', P.healthyBonus]);
     const income = Math.round(parts.reduce((a, p) => a + p[1], 0) * diff.income);
     if (diff.income !== 1) parts.push([diff.name + ' difficulty ×' + diff.income, income - parts.reduce((a, p) => a + p[1], 0)]);
     run.sp += income;
-    run.spHistory.push(income);
+    // The community: asks met or failed (their rewards go straight to SP), arrivals, departures and land sales.
+    const sp0 = run.sp;
+    const community = T.Stakeholders.roundEnd(w, run, (run.activeEvents || []).map(e => e.id || e));
+    if (run.sp > sp0) parts.push(['Stakeholder asks met', run.sp - sp0]);
+    run.spHistory.push(income + run.sp - sp0);
     // Goals and outcome.
     const goals = St.goals(w, run);
     run.lowRounds = ehi.total < P.collapseEHI ? run.lowRounds + 1 : 0;
+    run.mandateLow = run.stake.mandate < B.stakeholders.loseMandate ? run.mandateLow + 1 : 0;
     run.collapseRounds = w.producerBiomass() < B.collapseFrac * run.baseline.producers ? run.collapseRounds + 1 : 0;
     let outcome = null;
     if (run.lowRounds >= 2) outcome = { win: false, kind: 'collapse', headline: 'Ecosystem collapse: the Ecosystem Health Index stayed below ' + P.collapseEHI + ' for 2 rounds.' };
+    else if (run.mandateLow >= B.stakeholders.loseRounds) outcome = { win: false, kind: 'mandate', headline: 'The community withdrew its support: the mandate stayed below ' + B.stakeholders.loseMandate + '% for ' + B.stakeholders.loseRounds + ' rounds, and the board replaced the steward.' };
     else if (run.collapseRounds >= B.collapseRounds) outcome = { win: false, kind: 'collapse', headline: 'Ecosystem collapse: producers fell below 15% of the start for 2 rounds.' };
     else if (run.round >= B.maxRounds) {
       const avg = run.ehiHistory.reduce((a, b) => a + b, 0) / run.ehiHistory.length;
@@ -580,7 +616,7 @@ window.Trophic = window.Trophic || {};
     }
     run.outcome = outcome;
     const deltas = ehi.components.map((c, k) => ({ key: c.key, name: c.name, points: c.points, weight: c.weight, delta: prev ? c.points - prev.components[k].points : 0, cause: c.cause }));
-    return { ehi, view: run.ehiView, deltas, income, parts, goals, outcome, gone: gone.map(sp => sp.name), discovered: discovered.map(sp => sp.name) };
+    return { ehi, view: run.ehiView, deltas, income, parts, goals, outcome, community, mandate: run.stake.mandate, gone: gone.map(sp => sp.name), discovered: discovered.map(sp => sp.name) };
   };
 
   // ---------- goals ----------
@@ -615,6 +651,7 @@ window.Trophic = window.Trophic || {};
         case 'leaching': { const s = w.soilSummary(); met = s.losses <= s.fixation; now = 'nitrogen lost ' + Math.round(s.losses) + ' vs fixed ' + Math.round(s.fixation); break; }
         case 'forest': { const v = St.forestCover(w) / Math.max(0.01, b.forest); met = v >= g.min; now = 'forest cover ' + Math.round(v * 100) + '% of the start (goal ' + Math.round(g.min * 100) + '%)'; break; }
         case 'richness': { const v = w.diversity().richness / Math.max(1, b.richness); met = v >= g.min; now = 'richness ' + Math.round(v * 100) + '% of the start (goal ' + Math.round(g.min * 100) + '%)'; break; }
+        case 'mandate': { const v = run.stake ? run.stake.mandate : 0; met = v >= g.min; now = 'mandate ' + v + '% (goal ' + g.min + '%)'; break; }
         case 'sink': { const v = w.soilSummary().carbonBalance; met = v >= 0; now = v >= 0 ? 'a net carbon sink' : 'a net carbon source'; break; }
       }
       return { text: g.text, met, now };
@@ -629,6 +666,7 @@ window.Trophic = window.Trophic || {};
     const rows = [['Average EHI ' + Math.round(avg) + ' × ' + run.ehiHistory.length + ' rounds', Math.round(avg * run.ehiHistory.length)],
       ['Species recovered (' + run.recovered.length + ' × ' + P.scoreRecovered + ')', run.recovered.length * P.scoreRecovered],
       ['Species reintroduced (' + run.reintroduced.length + ' × ' + P.scoreReintroduced + ')', run.reintroduced.length * P.scoreReintroduced],
+      ['Community mandate ' + (run.stake ? run.stake.mandate : 50) + '%', Math.max(0, ((run.stake ? run.stake.mandate : 50) - 50) * P.scoreMandate)],
       ['Avoidable extinctions (' + run.extinct.length + ' × −' + P.scoreExtinction + ')', -run.extinct.length * P.scoreExtinction]];
     const raw = rows.reduce((a, r) => a + r[1], 0);
     rows.push(['Difficulty ×' + diff.scoreMult, Math.round(raw * diff.scoreMult) - raw]);
@@ -639,17 +677,19 @@ window.Trophic = window.Trophic || {};
 
   W._stewardState = function () {
     return this.exclosure ? { exclosure: Array.from(this.exclosure), wetland: Array.from(this.wetland), bareHold: Array.from(this.bareHold), harvest: this.harvest,
-      protected: [...this.protected], controlShare: this.controlShare || {} } : null;
+      protected: [...this.protected], controlShare: this.controlShare || {}, irrigation: this.irrigation, land: this._landState() } : null;
   };
   W._stewardRestore = function (s) {
     if (!s) return;
     this.exclosure = Uint8Array.from(s.exclosure); this.wetland = Uint8Array.from(s.wetland); this.bareHold = Uint8Array.from(s.bareHold);
-    this.harvest = s.harvest; this.protected = new Set(s.protected); this.controlShare = s.controlShare;
+    this.harvest = s.harvest; this.protected = new Set(s.protected); this.controlShare = s.controlShare; this.irrigation = s.irrigation || 0;
+    this._landRestore(s.land);
   };
 
   // Round start in the world: exclosures count down, discs stop holding bare soil.
   W._stewardBeginRound = function () {
     if (!this.exclosure || this.loading) return;
-    for (let i = 0; i < this.N * this.N; i++) { if (this.exclosure[i]) this.exclosure[i]--; this.bareHold[i] = 0; }
+    // Developed land (houses, fields) stays cleared.
+    for (let i = 0; i < this.N * this.N; i++) { if (this.exclosure[i]) this.exclosure[i]--; this.bareHold[i] = this.landUse && this.landUse[i] === 3 ? 1 : 0; }
   };
 })(window.Trophic);

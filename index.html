@@ -109,6 +109,7 @@
           <p class="caption" id="nw-diff-note"></p>
           <label class="row check-row"><input type="checkbox" id="nw-climate"> <span><b>Climate change</b> <span class="caption">CO₂ rises each round and the climate warms</span></span></label>
           <label class="row check-row"><input type="checkbox" id="nw-volcanic"> <span><b>Volcanic isle</b> <span class="caption">Start on bare rock: the whole run is primary succession</span></span></label>
+          <label class="row check-row"><input type="checkbox" id="nw-changing" checked> <span><b>Changing community</b> <span class="caption">Stakeholders arrive and leave; land comes up for sale</span></span></label>
           <div class="row between"><span></span><button class="btn primary" id="nw-begin">Begin as steward <span aria-hidden="true">→</span></button></div>
         </div>
       </div>
@@ -151,6 +152,10 @@
           <ul id="rp-inter" class="inter-list"></ul>
           <ul id="rp-notes" class="inter-list"></ul>
           <div id="rp-keystone" class="keystone-box"></div>
+        </div>
+        <div class="card pad-l rp-community">
+          <div class="row between"><h2 class="h-serif">The community</h2><b class="mono huge" id="rp-mandate">—</b></div>
+          <div id="rp-community"></div>
         </div>
         <div class="card dark pad-l rp-mp">
           <div class="row between"><h2 class="h-serif">Stewardship Points</h2><b class="mono huge" id="rp-sp-total">0</b></div>
@@ -238,6 +243,7 @@
 <script src="js/interactions.js"></script>
 <script src="js/keystone.js"></script>
 <script src="js/knowledge.js"></script>
+<script src="js/stakeholders.js"></script>
 <script src="js/steward.js"></script>
 <script src="js/energy.js"></script>
 <script src="js/scenarios.js"></script>

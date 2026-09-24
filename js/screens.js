@@ -19,6 +19,7 @@ window.Trophic = window.Trophic || {};
     $('nw-begin').addEventListener('click', () => G.beginRun());
     $('nw-climate').addEventListener('change', e => G.setClimateTrend(e.target.checked));
     $('nw-volcanic').addEventListener('change', e => G.setPrimary(e.target.checked));
+    $('nw-changing').addEventListener('change', e => G.setChanging(e.target.checked));
     $('nw-eco').addEventListener('change', e => G.setEcoregion(e.target.value));
     $('nw-scen').addEventListener('change', e => G.setScenario(e.target.value));
     $('btn-continue').addEventListener('click', () => G.continueRun());
@@ -267,6 +268,7 @@ window.Trophic = window.Trophic || {};
     // Notes: what changed and why.
     const nb = $('rp-notes'); nb.innerHTML = '';
     for (const n of rep.notes) nb.append(el('li', null, el('span', { class: 'chip', text: 'Note' }), el('span', { text: n })));
+    S.renderCommunity(rep);
     // SP.
     $('rp-sp-total').textContent = Math.round(run.sp);
     const t = $('rp-sp'); t.innerHTML = '';
@@ -276,6 +278,25 @@ window.Trophic = window.Trophic || {};
     cont.innerHTML = '';
     cont.append(rep.outcome ? 'See final score ' : 'Plan next round ', el('span', { 'aria-hidden': 'true', text: '→' }));
     S.renderInteractions(rep);
+  };
+
+  // The community card: the mandate, each stakeholder's trust, asks met or failed, arrivals, departures and land sales.
+  S.renderCommunity = function (rep) {
+    const box = $('rp-community'), c = rep.community;
+    box.innerHTML = '';
+    $('rp-mandate').textContent = rep.mandate != null ? rep.mandate + '%' : '—';
+    if (!c || !rep.stake) return;
+    box.append(el('p', { class: 'caption', text: 'Mandate: the community’s trust, weighted by each stakeholder’s influence. Below ' + B.stakeholders.loseMandate + '% for ' + B.stakeholders.loseRounds + ' rounds, the board replaces you.' }));
+    box.append(T.StewardUI.stakeList(rep.stake.filter(s => s.active)));
+    const items = [];
+    for (const a of c.asks) items.push(el('li', null, el('span', { class: 'chip', text: a.ok ? 'Ask met' : 'Ask failed' }), el('span', { text: a.who + ': ' + a.text + (a.ok ? ' (+' + a.reward + ' SP)' : '') })));
+    for (const ch of c.changes) items.push(el('li', null, el('span', { class: 'chip', text: 'Community' }), el('span', { text: ch[0].toUpperCase() + ch.slice(1) + '.' })));
+    if (c.sale) items.push(el('li', null, el('span', { class: 'chip', text: 'Land' }), el('span', { text: c.sale.text })));
+    const log = G.run.stake.log.filter(l => l.round === rep.round);
+    const byWho = {};
+    for (const l of log) (byWho[l.who] = byWho[l.who] || []).push((l.d > 0 ? '+' : '') + l.d + ' ' + l.why);
+    for (const who in byWho) items.push(el('li', null, el('span', { class: 'chip', text: 'Trust' }), el('span', { text: who + ': ' + byWho[who].join(', ') })));
+    if (items.length) box.append(el('ul', { class: 'inter-list' }, items));
   };
 
   // Interactions card: diversity, this round's interactions and the keystone tests' results as they arrive.

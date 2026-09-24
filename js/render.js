@@ -385,6 +385,26 @@ window.Trophic = window.Trophic || {};
   // Management areas: fenced exclosures and protected tiles on the map, queued actions, and the brush being placed.
   Renderer.prototype._drawAreas = function (world) {
     const ctx = this.ctx, z = this.cam.zoom;
+    // Land parcels: private land dashed brown, conservation easements green, developed land greyed out.
+    if (world.parcels && world.parcels.length) {
+      const bs = world.N / 4;
+      for (const p of world.parcels) {
+        if (p.use === 'public') continue;
+        const col = p.use === 'easement' ? 'rgba(94,158,69,0.9)' : p.use === 'developed' ? 'rgba(90,90,90,0.9)' : 'rgba(140,90,40,0.85)';
+        for (const [bx, by] of p.blocks) {
+          const x = bx * bs * TP, y = by * bs * TP, s = bs * TP;
+          if (p.use === 'developed') { ctx.fillStyle = 'rgba(120,120,120,0.35)'; ctx.fillRect(x, y, s, s); }
+          ctx.strokeStyle = col; ctx.lineWidth = 2 / z;
+          ctx.setLineDash(p.use === 'private' ? [8 / z, 5 / z] : []);
+          ctx.strokeRect(x + 1 / z, y + 1 / z, s - 2 / z, s - 2 / z);
+        }
+        ctx.setLineDash([]);
+        const [bx, by] = p.blocks[0], owner = p.owner >= 0 && world.run && world.run.stake ? world.run.stake.list[p.owner] : null;
+        const label = p.use === 'easement' ? 'Conservation easement' : p.use === 'developed' ? 'Developed' : owner ? owner.name + ' (private)' : 'Private';
+        ctx.fillStyle = col; ctx.font = (12 / z) + 'px system-ui, sans-serif';
+        ctx.fillText(label, bx * bs * TP + 6 / z, by * bs * TP + 16 / z);
+      }
+    }
     if (world.exclosure) {
       ctx.strokeStyle = 'rgba(122,74,30,0.8)'; ctx.lineWidth = 1.2 / z;
       ctx.beginPath();

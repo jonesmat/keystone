@@ -2,7 +2,7 @@
 // one copy per candidate without it, and posts each result as it finishes.
 self.window = self;
 importScripts('balance.js', 'genes.js', 'data.js', 'sim.js', 'cycles.js', 'populations.js', 'demography.js', 'succession.js',
-  'interactions.js', 'energy.js', 'generator.js', 'keystone.js');
+  'interactions.js', 'keystone.js', 'knowledge.js', 'stakeholders.js', 'steward.js', 'energy.js', 'generator.js');
 
 self.onmessage = function (ev) {
   const T = self.Trophic, m = ev.data;

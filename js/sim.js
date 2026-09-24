@@ -1652,7 +1652,7 @@ window.Trophic = window.Trophic || {};
   };
 
   // Saves carry this version; any other is from an older game and isn't loaded (no migrations).
-  T.SAVE_VERSION = 8;
+  T.SAVE_VERSION = 9;
 
   T.loadWorld = function (s, opts) {
     if (!s || s.v !== T.SAVE_VERSION) throw new Error('This save is from an older version of Keystone and cannot be loaded');

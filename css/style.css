@@ -634,3 +634,17 @@ table.harvest input { width: 56px; }
 .ehi-row .trk i.unc { background: repeating-linear-gradient(45deg, rgba(29,101,112,0.35) 0 4px, rgba(29,101,112,0.12) 4px 8px); }
 .cy-note { font-size: 11.5px; color: var(--ink-2); font-style: italic; margin: 2px 0 4px; }
 table.harvest td.stale { color: #B7791F; }
+
+/* The community (P3-M7 part 3) */
+.rp-community { grid-column: span 3; }
+.stake-list { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 6px; font-size: 12px; }
+.stake-list small { color: var(--ink-2); }
+.stake-list .trk { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 2px; }
+.stake-list .trk i { display: block; height: 100%; background: #A0A09A; }
+.stake-list li.ally .trk i { background: #2F7D32; } .stake-list li.ally .mono { color: #2F7D32; }
+.stake-list li.opponent .trk i { background: #B23A31; } .stake-list li.opponent .mono { color: #B23A31; }
+.ask { padding: 10px 12px; margin-top: 8px; font-size: 12.5px; }
+.ask p { margin: 4px 0 8px; }
+.ask.answered { opacity: 0.7; }
+.ask.sale { border-color: #C9A46A; }
+@media (max-width: 1100px) { .rp-community { grid-column: 1 / -1; } }

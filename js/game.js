@@ -98,6 +98,7 @@ window.Trophic = window.Trophic || {};
   G.setDifficulty = function (d) { G.setup.difficulty = d; G.renderNewWorld(); };
   G.setClimateTrend = function (on) { G.setup.climateTrend = !!on; };
   G.setPrimary = function (on) { G.setup.primary = !!on; };
+  G.setChanging = function (on) { G.setup.changing = !!on; };
 
   G.cancelGen = function () { G.genToken = (G.genToken || 0) + 1; };
 
@@ -204,7 +205,7 @@ window.Trophic = window.Trophic || {};
       climateTrend: !!st.climateTrend || !!(scen && scen.climateTrend), primary: !!st.primary });
     G.world = world;
     G.renderer.fitted = false;
-    const run = St.startRun(world, { scenario: scen ? scen.id : null, difficulty: st.difficulty });
+    const run = St.startRun(world, { scenario: scen ? scen.id : null, difficulty: st.difficulty, changing: st.changing !== false });
     Object.assign(run, {
       v: T.SAVE_VERSION, seed, mode: st.mode, biome: biome.id, ecoregion: st.mode === 'catalog' ? st.ecoregion : null,
       worldName: G.worldName(st), scenarioName: scen ? scen.name : null, seedString: st.mode === 'catalog' ? st.roster.seedString : null,
@@ -283,8 +284,20 @@ window.Trophic = window.Trophic || {};
     UI().updateHUD();
   };
 
+  // The community: answer a stakeholder's ask, or bid for an easement on land for sale.
+  G.answerAsk = function (k, accept) { T.Stakeholders.answer(G.run, k, accept); UI().updateHUD(); T.UI.renderStewardPanel(); };
+  G.bidSale = function () {
+    const sale = G.run.stake.sale;
+    if (!sale) return;
+    if (!T.Stakeholders.bid(G.world, G.run)) { UI().toast('Needs ' + sale.price + ' SP', 'bad'); return; }
+    T.Audio.cue('buy');
+    UI().toast('Conservation easement bought: the land is yours to manage');
+    G.renderer.dirtyTiles = true;
+    UI().updateHUD(); T.UI.renderStewardPanel();
+  };
+
   G.refreshMarks = function () {
-    const COL = { Habitat: 'rgba(94,158,69,0.95)', Wildlife: 'rgba(29,101,112,0.95)' };
+    const COL = { Habitat: 'rgba(94,158,69,0.95)', Wildlife: 'rgba(29,101,112,0.95)', Community: 'rgba(160,110,40,0.95)' };
     G.renderer.planMarks = G.run.queue.filter(q => q.x != null).map(q => { const a = St.actionById(q.id); return { x: q.x, y: q.y, r: q.r || a.r, color: COL[a.cat], label: a.name }; });
   };
 
@@ -419,7 +432,7 @@ window.Trophic = window.Trophic || {};
     const mentionsHidden = t => hidden.some(n => t.includes(n));
     if (inter) inter.items = inter.items.filter(it => !mentionsHidden(it.text));
     const report = run.report = {
-      view: res.view, discovered: res.discovered,
+      view: res.view, discovered: res.discovered, community: res.community, mandate: res.mandate, stake: JSON.parse(JSON.stringify(run.stake.list)),
       round: run.round, ehi: res.ehi, deltas: res.deltas, goals: res.goals, income: res.income, parts: res.parts, outcome: res.outcome, gone: res.gone.filter(n => !hidden.includes(n)),
       interactions: inter ? JSON.parse(JSON.stringify(inter)) : null, keystone: ks, notes: w.notes.splice(0).filter(n => !mentionsHidden(n)),
       demography: JSON.parse(JSON.stringify(w.demography || [])), energy: SU().combinedStats(w), lines,

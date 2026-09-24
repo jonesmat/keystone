@@ -12,6 +12,7 @@
 //   interior    animals: interior-woodland specialists, which breed only 3 or more tiles from open ground
 // A scenario's `damage` sets the conditions the steward inherits and `goals` the restoration targets for round 30
 // (see T.Steward.setupScenario and T.Steward.goals).
+// `stakeholders` lists stakeholder types the scenario always has (see T.Stakeholders).
 //   domestic    a domestic species the slot always holds (cattle), since occurrence data rarely records livestock
 window.Trophic = window.Trophic || {};
 
@@ -45,7 +46,9 @@ window.Trophic = window.Trophic || {};
       start: 'A cattle ranch stocked above K for decades: compacted soil, non-native forage grass monocultures, cattle as nearly the only large herbivore, native grazers and predators gone.',
       goal: 'Phase cattle down, restore native grass cover above 60%, bring back native grazers and then an apex predator.',
       damage: { compaction: 0.6, overstock: { slot: 'livestock', factor: 2.5 } },
+      stakeholders: ['rancher', 'conservation'],
       goals: [
+        { type: 'mandate', min: 50, text: 'Keep the community with you (mandate ≥ 50%)' },
         { type: 'reduce', slot: 'livestock', max: 0.25, text: 'Phase cattle down to a quarter of the starting herd' },
         { type: 'compaction', max: 0.2, text: 'Loosen compacted soil (mean compaction ≤ 20%)' },
         { type: 'nativeCover', min: 0.6, text: 'Native plant cover above 60%' },
@@ -74,6 +77,7 @@ window.Trophic = window.Trophic || {};
     },
     {
       id: 'oldfield', name: 'Old-field restoration', ecoregion: '9.2', place: 'Iowa and Illinois prairie',
+      stakeholders: ['farmer'],
       start: 'Abandoned cropland, mostly bare with a seed bank.', goal: 'A tallgrass prairie climax with 4 or more trophic levels.',
       damage: { bare: 0.8 },
       goals: [
@@ -84,6 +88,7 @@ window.Trophic = window.Trophic || {};
     },
     {
       id: 'predator', name: 'Predator return', ecoregion: '6.2', place: 'Greater Yellowstone',
+      stakeholders: ['rancher', 'hunters', 'outfitters'],
       start: 'Streamside willow and aspen overbrowsed by abundant elk, with no apex predator.', goal: 'Reintroduce an apex predator and see a trophic cascade restore the producers.',
       damage: { overbrowsed: 0.8, overstock: { slot: 'large grazer', factor: 2 } },
       goals: [
@@ -98,6 +103,7 @@ window.Trophic = window.Trophic || {};
     },
     {
       id: 'invasive', name: 'Invasive outbreak', ecoregion: '15.4', place: 'Everglades',
+      stakeholders: ['outfitters', 'conservation'],
       start: 'A generalist invader drawn from the catalog\'s non-native species, spreading from one corner.', goal: 'Hold native richness at baseline while the invader declines.',
       damage: { corner: 'invader' },
       goals: [
@@ -109,6 +115,7 @@ window.Trophic = window.Trophic || {};
     },
     {
       id: 'songbird', name: 'Endangered songbird', ecoregion: '9.4.6', place: 'Edwards Plateau, Texas Hill Country',
+      stakeholders: ['rancher', 'conservation'],
       start: 'A fragmented juniper–oak woodland with an endangered interior-nesting songbird and a nest parasite.', goal: 'Grow the songbird to a self-sustaining population.',
       damage: { fragment: 3 },
       goals: [
@@ -141,6 +148,7 @@ window.Trophic = window.Trophic || {};
     },
     {
       id: 'aquifer', name: 'Dry plains aquifer', ecoregion: '9.4', place: 'High Plains over the Ogallala Aquifer',
+      stakeholders: ['farmer', 'utility'],
       start: 'Irrigated prairie over a falling water table, with compacted, nitrate-leaching fields.', goal: 'Bring withdrawal down to recharge and stop nitrate runoff.',
       damage: { compaction: 0.4, irrigation: 0.6, aquiferStart: 0.7 },
       goals: [
@@ -151,6 +159,7 @@ window.Trophic = window.Trophic || {};
     },
     {
       id: 'warming', name: 'Warming world', ecoregion: '8.4', place: 'Central Appalachians',
+      stakeholders: ['timber'],
       start: 'A temperate hardwood forest under rising CO₂ and a climate envelope moving north.', goal: 'Keep forest cover and richness at 80% of baseline and the map a net carbon sink.',
       goals: [
         { type: 'forest', min: 0.8, text: 'Forest cover at 80% of the start or more' },

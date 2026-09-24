@@ -29,11 +29,11 @@ The game keeps no backward compatibility while it's in development: saves carry 
 
 You are the steward of a whole ecosystem, not one of its species. A run is 30 rounds (a round is a year) in a real U.S. ecoregion with its real species, or in one of the fictional worlds (Temperate Meadow, Open Channel, a generated world). Each round:
 
-- **Plan:** spend Stewardship Points on management actions (burns, discing, overseeding natives, reforesting, wetlands, exclosures, reintroductions and more), placed on the map, and set harvest limits.
+- **Plan:** spend Stewardship Points on management actions (burns, discing, overseeding natives, reforesting, wetlands, exclosures, reintroductions and more), placed on the map, and set harvest limits. Answer the community's asks and bid on land that comes up for sale.
 - **Season:** the simulation runs and the community responds. Nothing is under your direct control.
 - **Report:** the Ecosystem Health Index (0–100, from seven textbook components), the energy through the consumers, demography for every species, interactions, keystone tests and your SP income.
 
-Win a scenario by finishing with an average EHI of 70 or more and every restoration goal met. The run ends early if the EHI stays below 30 for 2 rounds or the producers collapse. Species don't evolve: each has a fixed trait sheet.
+Win a scenario by finishing with an average EHI of 70 or more and every restoration goal met. The run ends early if the EHI stays below 30 for 2 rounds, the producers collapse, or the community's mandate stays below 25% for 2 rounds. Species don't evolve: each has a fixed trait sheet.
 
 ## Layout
 
@@ -64,6 +64,8 @@ Win a scenario by finishing with an average EHI of 70 or more and every restorat
 | `js/game.js` | Controller: New world setup, the Plan → Season → Report loop, events, the end of a run, saves, input |
 | `tools/headless.js` | Run one world in Node: `node tools/headless.js 10 12345 [meadow\|generated]` |
 | `tools/check-events.js` | Smoke tests: fixed trait sheets, events, save round-trip, refusing an older version's save, generator rules |
+| `js/stakeholders.js` | The steward's community: stakeholder types, asks, trust and the mandate, cost modifiers, land parcels, arrivals and departures, land sales and conservation easements |
+| `tools/check-stakeholders.js` | Stakeholder checks: the starting community, private land, asks, trust from actions, ally and opponent costs, the mandate and its loss condition, land sales, timber, water rights, the separate random stream, saves: `node tools/check-stakeholders.js` |
 | `tools/check-knowledge.js` | Knowledge checks: starting records, what each survey method detects and how accurate it is, combining surveys, staleness, studying and collars, sightings and discovery SP, the EHI range, instruments, the monitoring program, saves: `node tools/check-knowledge.js` |
 | `tools/check-steward.js` | Steward checks: the EHI, every management action, harvest limits, Rewilding's damage and goals, collapse, score and saves: `node tools/check-steward.js` |
 | `tools/catalog/build.js` | Builds an ecoregion catalog from open data (EPA ecoregions, GBIF occurrences and taxonomy, GRIIS, EltonTraits, USDA PLANTS, Open-Meteo), caching every download in `tools/catalog/cache/`: `node tools/catalog/build.js <9.3 \| 9.4.6 \| all> [--quota-scale 1.6]` |
@@ -196,7 +198,6 @@ Last `check-interactions.js` run: all checks pass. Removing the Edwards Plateau 
 - **The Ecosystem Health Index:** energy pyramid integrity (20), biodiversity (20), population stability (15), nutrient, water and carbon balance (15), keystone and mutualist presence (10), habitat structure (10) and small-population viability (10), each with its main cause.
 - **Scenarios** now set the damage the steward inherits (Rewilding: compacted soil, cattle overstocked 2.5×, a non-native brome monoculture on about 60% of the land) and restoration goals checked every round.
 - **Win, loss and score:** finish 30 rounds with an average EHI of 70 or more and every goal met; lose if the EHI stays below 30 for 2 rounds or producers collapse. Score = average EHI × rounds + 40 per species recovered and per reintroduction − 40 per avoidable extinction, times the difficulty.
-- **Not yet:** stakeholders, trust, the mandate and land sales (part 3).
 
 Last `check-steward.js` run: all checks pass.
 
@@ -210,6 +211,18 @@ Last `check-steward.js` run: all checks pass.
 - **The EHI as a range:** each component is certain only as far as the steward knows its inputs (surveyed share of species, sighted share, fresh soil tests and well gauges); the rest spans its full range. The true EHI, used for scoring, appears at the end. Harvest limits are set against estimates, so stale data risks overharvest.
 
 Last `check-knowledge.js` run: all checks pass. 13 of 14 big-survey estimates fall within two error bars of the truth; a blind start discovers 6 Meadow species by chance in 4 rounds; the EHI range goes from about 77 points wide to 78–85 (true 84) after surveying everything.
+
+**P3-M7 part 3 (the community): built.** In `js/stakeholders.js`.
+
+- **Stakeholders:** 3–6 at the start from ten types (ranching family, farmers and irrigators, timber company, hunters and anglers, conservation group, outfitters and tourism, town water utility, beekeepers, traditional land users, research station), weighted by the world (timber companies where there's forest, a water utility where there's water). A scenario can require types: Rewilding always has a ranch and a conservation group. Each has trust (0–100), influence, demand and flexibility.
+- **Likes and dislikes:** each type likes some actions and dislikes others (a ranch dislikes reintroductions and Protect orders; a conservation group likes them). Doing them moves trust every round. **Allies** (trust > 70) make actions they like 20% cheaper; **opponents** (< 30) make actions they dislike 30% dearer.
+- **Asks:** each round 1–3 stakeholders ask for something, tied to the world's real species: keep the cattle herd, take a predator that's taking stock, open a game season, protect an at-risk species (which names it to the steward), raise native cover, keep an animal for visitors, don't cap irrigation, plant for the bees, harvest timber, keep nitrogen losses below fixation, hold a cultural burn, survey a species. Accept or decline in Plan. A met ask pays SP and trust; a failed one costs more trust than declining; refusals past a stakeholder's flexibility cost more each time.
+- **The mandate** is the influence-weighted mean trust. Below 25% for 2 rounds, the board replaces the steward (a loss). Rewilding's goals include a mandate of 50% or more, and the score adds a point per mandate point above 50.
+- **Land:** landholders (ranch, farm, timber, traditional users) hold parcels of the map, drawn with dashed outlines. The steward's area actions do nothing on private land. With the **Changing community** option (on by default), stakeholders leave (more often when they're opponents, and ranchers and farmers in a drought) and arrive (outfitters are drawn by a returning apex predator). A departing landholder's land goes up for sale: bid for a conservation easement (allies chip in on the price) and it becomes land the steward manages; otherwise it goes to a subdivision or cropland (cleared and compacted for good), a ranch, a hunting lease or a private reserve, with lower mandates favouring development.
+- **New Community actions:** timber harvest (cuts mature forest, exporting the logs, for SP) and cap irrigation (buys back water rights; the aquifer draw falls 40%).
+- The community draws on its own random stream, so it never changes how the ecosystem plays out. The keystone worker now loads the steward modules, so its replays keep exclosures and harvest limits. Save version 9.
+
+Last `check-stakeholders.js` run: all checks pass.
 
 **Meadow balance after retiring evolution.** Without evolution to mask it, the hands-off Meadow's herbivores crashed and its carnivores died out. Three causes, all fixed:
 

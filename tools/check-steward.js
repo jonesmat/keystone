@@ -16,7 +16,7 @@ let failures = 0;
 const check = (ok, text) => { if (!ok) failures++; console.log('  ' + (ok ? 'PASS' : 'FAIL') + '  ' + text); };
 const conserved = w => w.ledger.maxErr < 1e-3 && w.nledger.maxErr < 1e-3;
 const season = (w, run) => { w.beginRound(run.round); St.startSeason(w, run); while (!w.roundOver()) w.tick(); w.updateMeans(); const r = St.endRound(w, run); run.round++; w.round = run.round; return r; };
-const meadow = seed => { const w = T.createWorld({ seed, roster: T.Gen.meadowRoster() }); return { w, run: St.startRun(w, {}) }; };
+const meadow = seed => { const w = T.createWorld({ seed, roster: T.Gen.meadowRoster() }); return { w, run: St.startRun(w, { community: false }) }; };
 B.succession.natural = false;
 
 T.Catalog.load('9.3', cat => {
@@ -31,7 +31,7 @@ T.Catalog.load('9.3', cat => {
   console.log('    mean compaction ' + Math.round(100 * comp / land) + '%, native cover ' + Math.round(100 * St.nativeCover(w)) + '%, ' + w.countPops().count[cattle.idx] + ' cattle (roster ' + cattle.startPop + ')');
   check(comp / land > 0.4 && St.nativeCover(w) < 0.5 && w.countPops().count[cattle.idx] > 2 * cattle.startPop, 'the ranch starts compacted, overstocked and under a non-native monoculture');
   const g0 = St.goals(w, run);
-  check(g0.length === 6 && !g0.find(g => /compaction/.test(g.text)).met, 'its 6 goals evaluate, and compaction starts unmet');
+  check(g0.length === 7 && !g0.find(g => /compaction/.test(g.text)).met, 'its 7 goals evaluate, and compaction starts unmet');
   // Reintroduction: the native grazers and the apex predator wait in the regional pool; livestock never does.
   const pooled = St.targets(w, St.actionById('reintroduce'));
   check(pooled.length >= 2 && !pooled.some(sp => sp.domestic || (sp.meta && sp.meta.native === false)), 'the regional pool offers ' + pooled.map(sp => sp.name).join(', ') + ' for reintroduction');

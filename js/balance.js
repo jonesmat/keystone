@@ -262,6 +262,26 @@ Trophic.BALANCE = {
     interiorMin: 0.3,       // interior share of woodland below which the Habitat component falls
     collapseEHI: 30, winEHI: 70,
     scoreRecovered: 40, scoreReintroduced: 40, scoreExtinction: 40,
+    timberValue: 0.6,       // SP per mature forest tile cut
+    waterCap: 0.4,          // capping irrigation cuts the draw on the aquifer by this share
+    scoreMandate: 1,        // score per point of final mandate above 50
+  },
+
+  // ---------- Phase 3: the steward's community (js/stakeholders.js) ----------
+  stakeholders: {
+    count: [3, 6],          // stakeholders at the start
+    startTrust: [35, 65],
+    ally: 70, opponent: 30, // trust above which a stakeholder is an ally, below which an opponent
+    allyDiscount: 0.8,      // allies make the actions they like this much cheaper
+    opponentMarkup: 1.3,    // opponents make the actions they dislike this much dearer
+    likeGain: 4, dislikeLoss: 6,   // trust per round an action they like or dislike is done
+    declineLoss: 4, failLoss: 10, askTrust: 10,   // trust for a declined, an accepted-but-failed and a met ask
+    askReward: 6,           // SP for a met ask (× the stakeholder's demand)
+    leaveChance: 0.04, arriveChance: 0.1,   // per round, with the Changing community option
+    pricePerTile: 0.05,     // SP per land tile for a conservation easement (× market demand)
+    allyShare: 0.15,        // each ally chips in this share of an easement's price
+    maxPrivateShare: 0.5,   // private land never covers more than this share of the map
+    loseMandate: 25, loseRounds: 2,   // a mandate below 25 for 2 rounds ends the run
   },
 
   // ---------- Phase 3: what the steward knows (js/knowledge.js) ----------

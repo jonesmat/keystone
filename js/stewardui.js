@@ -32,6 +32,42 @@ window.Trophic = window.Trophic || {};
     el('b', { class: 'mono', text: rangeTxt(c.lo, c.hi) + '/' + c.weight }))));
   SU.ehiBars = ehiBars; SU.rangeTxt = rangeTxt;
 
+  // Stakeholders with trust bars: allies above 70, opponents below 30.
+  SU.stakeList = function (list) {
+    const P = B.stakeholders;
+    return el('ul', { class: 'stake-list' }, list.map(s => {
+      const Ty = T.Stakeholders.TYPES[s.type], role = s.trust > P.ally ? 'ally' : s.trust < P.opponent ? 'opponent' : '';
+      const tip = 'Likes: ' + (Ty.likes.map(id => St.actionById(id).name).join(', ') || 'nothing in particular') + '. Dislikes: ' + (Ty.dislikes.map(id => St.actionById(id).name).join(', ') || 'nothing in particular') + '.';
+      return el('li', { class: role, title: tip }, el('div', { class: 'row between' }, el('span', null, el('b', { text: s.name }), el('small', { text: ' ' + Ty.name + (s.parcel != null ? ' · landholder' : '') })),
+        el('span', { class: 'mono', text: Math.round(s.trust) + (role ? ' · ' + role : '') })),
+        el('div', { class: 'trk' }, el('i', { style: { width: s.trust + '%' } })));
+    }));
+  };
+
+  // The community in Plan: the mandate, stakeholders, their asks and any land for sale.
+  function renderCommunity(box) {
+    const g = G(), run = g.run, st = run.stake;
+    if (!st || !st.list.length) return;
+    const P = B.stakeholders;
+    box.append(el('div', { class: 'row between' }, el('h3', { class: 'h-serif', text: 'The community' }), el('b', { class: 'mono' + (st.mandate < P.loseMandate ? ' neg' : ''), text: 'mandate ' + st.mandate + '%' })));
+    box.append(SU.stakeList(st.list.filter(s => s.active)));
+    if (run.mandateLow) box.append(el('p', { class: 'event-note', text: '⚠ Your mandate is below ' + P.loseMandate + '%: one more round like this and the board replaces you.' }));
+    st.asks.forEach((a, k) => {
+      const s = st.list[a.from];
+      const card = el('div', { class: 'ask card' + (a.state !== 'open' ? ' answered' : '') }, el('div', { class: 'caption', text: s.name + ' asks · +' + a.reward + ' SP if met' }), el('p', { text: a.text }));
+      if (a.state === 'open') card.append(el('div', { class: 'row gap' }, el('button', { class: 'btn primary small', text: 'Accept', onclick: () => g.answerAsk(k, true) }),
+        el('button', { class: 'btn small', text: 'Decline', onclick: () => g.answerAsk(k, false) })));
+      else card.append(el('div', { class: 'caption', text: a.state === 'accepted' ? '✓ Accepted: checked at the end of the round' : 'Declined' }));
+      box.append(card);
+    });
+    if (st.sale) {
+      const w = g.world, pc = w.parcels[st.sale.parcel];
+      box.append(el('div', { class: 'ask card sale' }, el('div', { class: 'caption', text: 'Land for sale' }),
+        el('p', { text: st.sale.from + '’s land (' + pc.tiles + ' tiles) is on the market. Bid for a conservation easement and it’s protected and yours to manage; otherwise another buyer takes it this round.' + (st.sale.allies ? ' Your allies chip in toward the price.' : '') }),
+        el('button', { class: 'btn primary small', disabled: run.sp < st.sale.price, text: 'Bid · ' + st.sale.price + ' SP', onclick: () => g.bidSale() })));
+    }
+  }
+
   const goalList = (goals) => el('ul', { class: 'goal-list' }, goals.map(g => el('li', { class: g.met ? 'met' : '' }, el('span', { class: 'tick', text: g.met ? '✓' : '○' }), el('span', null, g.text, el('small', { text: g.now })))));
 
   // ---------- right panel ----------
@@ -42,7 +78,8 @@ window.Trophic = window.Trophic || {};
     const now = performance.now();
     if (g.state === 'simulate' && SU.panelAt && now - SU.panelAt < 1000) return;   // the season view refreshes once a second
     // In Plan, redraw only when something changed, so a harvest limit being typed isn't wiped out.
-    const key = g.state + '|' + run.round + '|' + Math.round(run.sp) + '|' + g.chosen + '|' + run.queue.length + '|' + run.standing.length + '|' + JSON.stringify(run.harvest) + '|' + (run.ehiHistory.length);
+    const key = g.state + '|' + run.round + '|' + Math.round(run.sp) + '|' + g.chosen + '|' + run.queue.length + '|' + run.standing.length + '|' + JSON.stringify(run.harvest) + '|' + (run.ehiHistory.length) +
+      '|' + (run.stake ? run.stake.asks.map(a => a.state).join() + (run.stake.sale ? 's' : '') + run.stake.mandate : '');
     if (g.state === 'plan' && key === SU.planKey && box.children.length) return;
     SU.planKey = key;
     SU.panelAt = now;
@@ -56,7 +93,7 @@ window.Trophic = window.Trophic || {};
     if (run.ehiHistory.length && run.ehiView) box.append(ehiBars(run.ehiView));
     const goals = St.goals(w, run);
     if (goals.length) box.append(el('h3', { class: 'h-serif', text: 'Restoration goals' }), goalList(goals));
-    if (g.state === 'plan') renderPlan(box);
+    if (g.state === 'plan') { renderPlan(box); renderCommunity(box); }
     else renderWatch(box);
   };
 
@@ -147,7 +184,7 @@ window.Trophic = window.Trophic || {};
     }
     // Actions scroll sideways; Start season stays in reach.
     const strip = el('div', { class: 'act-strip', role: 'toolbar', 'aria-label': 'Management actions' });
-    for (const cat of ['Monitor', 'Habitat', 'Wildlife']) {
+    for (const cat of ['Monitor', 'Habitat', 'Wildlife', 'Community']) {
       strip.append(el('div', { class: 'eyebrow', text: cat }));
       for (const a of St.ACTIONS.filter(x => x.cat === cat)) {
         strip.append(el('button', { class: 'dir-btn act' + (g.chosen === a.id ? ' active' : ''), title: a.name + ': ' + a.desc, onclick: () => g.chooseAction(g.chosen === a.id ? null : a.id) },
