@@ -2,6 +2,8 @@
 //   node tools/catalog/build.js <Level II or III code | all> [--quota-scale 1] [--refresh]
 //   e.g. node tools/catalog/build.js 9.3            (Level II: West-Central Semi-Arid Prairies)
 //        node tools/catalog/build.js 9.4.6 --quota-scale 1.6   (Level III: Edwards Plateau, a richer catalog)
+//        node tools/catalog/build.js all --topup   (only add species for roles a built catalog is short of; see TOPUPS)
+//        node tools/catalog/build.js map           (js/catalogs/usmap.js: simplified outlines of every Level II ecoregion)
 // Writes js/catalogs/<code>.js (a static script, so the game still runs from file://). Every download is cached under
 // tools/catalog/cache/ (git-ignored), so rebuilding is cheap and repeatable.
 //
@@ -31,6 +33,7 @@ const opt = { code: args[0], quotaScale: 1, refresh: false };
 for (let i = 1; i < args.length; i++) {
   if (args[i] === '--refresh') opt.refresh = true;
   else if (args[i] === '--quota-scale') opt.quotaScale = +args[++i];
+  else if (args[i] === '--topup') opt.topup = true;
 }
 if (!opt.code) { console.error('usage: node tools/catalog/build.js <Level II code | all>'); process.exit(1); }
 
@@ -48,6 +51,22 @@ const GROUPS = [
   { id: 'reptile', keys: [11592253, 11418114, 11493978], quota: 12, facet: 100 },
   { id: 'amphibian', keys: [131], quota: 8, facet: 100 },
   { id: 'fish', keys: [1153, 1313, 708, 548, 547, 587], quota: 12, facet: 100 },
+];
+
+// Role guarantees. Occurrence records favour what people photograph, so the most-recorded species can leave a catalog
+// without the roles its scenarios need (a tallgrass prairie with one native grass). After the quota picks, each
+// top-up whose role is short queries its own taxa per cell and adds the most widespread species that fill the role.
+// `as` is the group a top-up's species are classified with; `min` counts every species in the catalog with the role.
+const TOPUPS = [
+  { id: 'native grass', keys: [3073, 7708], as: 'plant', facet: 200, min: 8, want: e => e.habit === 'grass' && e.native },
+  { id: 'non-native grass', keys: [3073], as: 'plant', facet: 200, min: 2, want: e => e.habit === 'grass' && !e.native },
+  { id: 'native legume', keys: [5386], as: 'plant', facet: 150, min: 4, want: e => e.fixer && e.native && e.habit === 'forb' },
+  { id: 'earthworm', keys: [6103], as: 'worm', facet: 50, min: 6, want: e => e.level === 'decomposer' },
+  { id: 'woodlouse', keys: [643], as: 'crustacean', facet: 50, min: 6, want: e => e.level === 'decomposer' },
+  { id: 'carrion and dung beetle', keys: [4762, 5840], as: 'insect', facet: 150, min: 6, want: e => e.level === 'decomposer' },
+  { id: 'raptor', keys: [2877, 9348, 5240], as: 'bird', facet: 60, min: 4, want: e => e.roles.includes('raptor') },
+  { id: 'scavenger', keys: [3242141, 5235], as: 'bird', facet: 30, min: 2, want: e => e.roles.includes('scavenger') },
+  { id: 'apex predator', keys: [9701, 9703, 9681], as: 'mammal', facet: 30, min: 2, want: e => e.roles.includes('apex predator') },
 ];
 
 // ---------- fetching with a disk cache ----------
@@ -207,11 +226,12 @@ async function usShare(key) {
   return total ? us / total : 0;
 }
 
-async function occurrenceTallies(cells) {
+async function occurrenceTallies(cells, groups) {
+  groups = groups || GROUPS;
   const tallies = {};   // group id -> speciesKey -> { count, cells, weight }
-  for (const g of GROUPS) tallies[g.id] = new Map();
+  for (const g of groups) tallies[g.id] = new Map();
   const jobs = [];
-  for (const c of cells) for (const g of GROUPS) jobs.push({ c, g });
+  for (const c of cells) for (const g of groups) jobs.push({ c, g });
   let done = 0;
   await pool(jobs, 3, async ({ c, g }) => {
     // Several taxon keys (reptiles, fish) go in one query: GBIF ORs repeated taxonKey parameters.
@@ -599,7 +619,96 @@ function biomeFor(c) {
 
 // ---------- build one catalog ----------
 
+// One species as a catalog entry: traits, roles and native status. Null for species that don't belong (cattle, captive
+// exotics, taxa without a game role).
+async function makeEntry(info, gid, tally, ctx) {
+  const { intro, et, totalWeight } = ctx;
+  let entry;
+  if (gid === 'plant') {
+    const usda = await usdaPlant(info.sci);
+    const cls = classifyPlant(info, usda);
+    // Native if USDA lists it as native in the lower 48; where it lists both, the GRIIS register decides.
+    const inGriis = intro.has(info.key) || intro.has(info.sci);
+    const native = usda && usda.known ? usda.nativeN && !(usda.introducedI && inGriis) : !inGriis;
+    const common = usda && usda.common ? usda.common[0].toUpperCase() + usda.common.slice(1) : info.common;
+    entry = Object.assign({ key: info.key, sci: info.sci, common, group: gid, family: info.family, native, iucn: info.iucn }, cls,
+      { traits: usda ? 'USDA PLANTS' : 'family default' });
+  } else {
+    const inGriis = intro.has(info.key) || intro.has(info.sci);
+    if (info.sci === 'Bos taurus') return null;   // scenarios add domestic cattle themselves
+    // Captive and ranch exotics (addax, oryx, zebra on Hill Country game ranches; pet tortoises): vertebrates that
+    // GRIIS doesn't list as established aliens and whose native range isn't in North America or that are rarely
+    // recorded in the U.S.
+    if (!inGriis && ['mammal', 'bird', 'reptile', 'amphibian', 'fish'].includes(gid) &&
+      (!(await nativeToNorthAmerica(info.key)) || (await usShare(info.key)) < 0.15)) return null;
+    const trait = gid === 'bird' || gid === 'mammal' ? await eltonFor(gid, info) : null;
+    const cls = classifyAnimal(info, gid, trait);
+    if (!cls) return null;
+    if (gid === 'bird' && trait && trait.English) info.common = trait.English.trim();
+    entry = Object.assign({ key: info.key, sci: info.sci, common: info.common, group: gid, family: info.family, order: info.order,
+      native: !intro.has(info.key) && !intro.has(info.sci), iucn: info.iucn }, cls);
+  }
+  entry.occupancy = +(tally.weight / totalWeight).toFixed(3);
+  entry.records = tally.count;
+  return entry;
+}
+
+// --topup: top up an already-built catalog in place, keeping every species it has.
+async function topUpBuilt(code) {
+  const t0 = Date.now();
+  requests = 0; cached = 0;
+  const file = path.join(OUT, code.replace(/\./g, '_') + '.js');
+  if (!fs.existsSync(file)) { console.log('Ecoregion ' + code + ': not built'); return null; }
+  global.window = global;
+  delete require.cache[require.resolve(file)];
+  require(file);
+  const catalog = global.Trophic.CATALOGS[code];
+  console.log('Ecoregion ' + code + ' (top-up) · ' + catalog.species.length + ' species');
+  const geo = await ecoregionGeometry(code);
+  const cells = cellsFor(geo.polys);
+  const ctx = { intro: await introducedSet(), et: await eltonTraits(), totalWeight: cells.reduce((a, c) => a + c.share, 0) };
+  const n0 = catalog.species.length;
+  await topUp(catalog.species, cells, ctx);
+  if (catalog.species.length > n0) writeCatalog(catalog);
+  console.log('  ' + (catalog.species.length - n0) + ' species added · ' + requests + ' requests (' + cached + ' cached) · ' + ((Date.now() - t0) / 1000).toFixed(0) + ' s');
+  return catalog;
+}
+
+function writeCatalog(catalog) {
+  fs.mkdirSync(OUT, { recursive: true });
+  const file = path.join(OUT, catalog.code.replace(/\./g, '_') + '.js');
+  fs.writeFileSync(file, '// Generated by tools/catalog/build.js — do not edit by hand.\n' +
+    'window.Trophic = window.Trophic || {};\n(Trophic.CATALOGS = Trophic.CATALOGS || {})[' + JSON.stringify(catalog.code) + '] = ' + JSON.stringify(catalog) + ';\n');
+  writeIndex(catalog);
+  return file;
+}
+
+// Top up roles the quota picks left short (see TOPUPS).
+async function topUp(species, cells, ctx) {
+  for (const t of TOPUPS) {
+    const have = species.filter(t.want).length;
+    if (have >= t.min) continue;
+    const tallies = (await occurrenceTallies(cells, [t]))[t.id];
+    const ranked = [...tallies.entries()].sort((a, b) => b[1].weight - a[1].weight || b[1].count - a[1].count);
+    const keys = new Set(species.map(e => String(e.key)));
+    let added = 0;
+    for (let k = 0; k < ranked.length && have + added < t.min; k += 8) {
+      const batch = ranked.slice(k, k + 8).filter(([key]) => !keys.has(key));
+      const infos = await pool(batch, 4, async ([key]) => speciesInfo(key));
+      for (const info of infos) {
+        if (!info || info.rank !== 'SPECIES' || have + added >= t.min || keys.has(String(info.key))) continue;
+        const entry = await makeEntry(info, t.as, tallies.get(String(info.key)), ctx);
+        if (!entry || !t.want(entry)) continue;
+        entry.topUp = t.id;
+        species.push(entry); keys.add(String(info.key)); added++;
+      }
+    }
+    console.log('  top-up ' + t.id.padEnd(24) + have + ' → ' + (have + added) + ' (min ' + t.min + ')');
+  }
+}
+
 async function build(code) {
+  if (opt.topup) return topUpBuilt(code);
   const t0 = Date.now();
   requests = 0; cached = 0;
   console.log('Ecoregion ' + code);
@@ -611,6 +720,7 @@ async function build(code) {
   const totalWeight = cells.reduce((a, c) => a + c.share, 0);
   const intro = await introducedSet();
   const et = await eltonTraits();
+  const ctx = { intro, et, totalWeight };
   const species = [];
   for (const g of GROUPS) {
     const quota = Math.round(g.quota * opt.quotaScale);
@@ -631,39 +741,13 @@ async function build(code) {
     for (const info of infos) {
       k++;
       if (!info || info.rank !== 'SPECIES' || picked.length >= quota) continue;
-      const tally = tallies[g.id].get(String(info.key));
-      let entry;
-      if (g.id === 'plant') {
-        const usda = await usdaPlant(info.sci);
-        const cls = classifyPlant(info, usda);
-        // Native if USDA lists it as native in the lower 48; where it lists both, the GRIIS register decides.
-        const inGriis = intro.has(info.key) || intro.has(info.sci);
-        const native = usda && usda.known ? usda.nativeN && !(usda.introducedI && inGriis) : !inGriis;
-        const common = usda && usda.common ? usda.common[0].toUpperCase() + usda.common.slice(1) : info.common;
-        entry = Object.assign({ key: info.key, sci: info.sci, common, group: g.id, family: info.family, native, iucn: info.iucn }, cls,
-          { traits: usda ? 'USDA PLANTS' : 'family default' });
-      } else {
-        const inGriis = intro.has(info.key) || intro.has(info.sci);
-        if (info.sci === 'Bos taurus') continue;   // scenarios add domestic cattle themselves
-        // Captive and ranch exotics (addax, oryx, zebra on Hill Country game ranches; pet tortoises): vertebrates that
-        // GRIIS doesn't list as established aliens and whose native range isn't in North America or that are rarely
-        // recorded in the U.S.
-        if (!inGriis && ['mammal', 'bird', 'reptile', 'amphibian', 'fish'].includes(g.id) &&
-          (!(await nativeToNorthAmerica(info.key)) || (await usShare(info.key)) < 0.15)) continue;
-        const trait = g.id === 'bird' || g.id === 'mammal' ? await eltonFor(g.id, info) : null;
-        const cls = classifyAnimal(info, g.id, trait);
-        if (!cls) continue;
-        if (g.id === 'bird' && trait && trait.English) info.common = trait.English.trim();
-        entry = Object.assign({ key: info.key, sci: info.sci, common: info.common, group: g.id, family: info.family, order: info.order,
-          native: !intro.has(info.key) && !intro.has(info.sci), iucn: info.iucn }, cls);
-      }
-      entry.occupancy = +(tally.weight / totalWeight).toFixed(3);
-      entry.records = tally.count;
-      picked.push(entry);
+      const entry = await makeEntry(info, g.id, tallies[g.id].get(String(info.key)), ctx);
+      if (entry) picked.push(entry);
     }
     console.log('  ' + g.id.padEnd(11) + picked.length + ' of ' + ranked.length + ' recorded species');
     species.push(...picked);
   }
+  await topUp(species, cells, ctx);
   const climate = await climateNormals(cells);
   const catalog = {
     code, name: titleCase(geo.name), level: geo.level, parent: geo.parent, level3: geo.l3, built: new Date().toISOString().slice(0, 10),
@@ -679,11 +763,7 @@ async function build(code) {
       'Open-Meteo historical weather (ERA5), 1991–2020, CC BY 4.0',
     ],
   };
-  fs.mkdirSync(OUT, { recursive: true });
-  const file = path.join(OUT, code.replace(/\./g, '_') + '.js');
-  fs.writeFileSync(file, '// Generated by tools/catalog/build.js — do not edit by hand.\n' +
-    'window.Trophic = window.Trophic || {};\n(Trophic.CATALOGS = Trophic.CATALOGS || {})[' + JSON.stringify(code) + '] = ' + JSON.stringify(catalog) + ';\n');
-  writeIndex(catalog);
+  const file = writeCatalog(catalog);
   console.log('  climate ' + climate.tMean + ' °C ±' + climate.tAmp + ', ' + climate.rain + ' cm/yr → ' + catalog.climate.biome);
   console.log('  wrote ' + path.relative(ROOT, file) + ' · ' + species.length + ' species · ' + requests + ' requests (' + cached + ' cached) · ' + ((Date.now() - t0) / 1000).toFixed(0) + ' s');
   return catalog;
@@ -711,7 +791,52 @@ async function listCodes() {
   return [...new Set(j.features.map(f => f.attributes.NA_L2CODE))].sort((a, b) => parseFloat(a) - parseFloat(b));
 }
 
+// The New world screen's map: every Level II ecoregion in the lower 48 as a simplified SVG path, in an
+// equirectangular projection squeezed by cos(38°) so the country keeps its familiar shape.
+async function writeMap() {
+  const codes = await listCodes(), W = 960, lon0 = -125, lon1 = -66.5, lat0 = 24, lat1 = 49.5;
+  const kx = W / ((lon1 - lon0) * Math.cos(38 * Math.PI / 180)), H = Math.round((lat1 - lat0) * kx);
+  const X = lon => (lon - lon0) * Math.cos(38 * Math.PI / 180) * kx, Y = lat => (lat1 - lat) * kx;
+  // Douglas–Peucker in degrees.
+  const simplify = (pts, tol) => {
+    if (pts.length < 4) return pts;
+    const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+    const stack = [[0, pts.length - 1]];
+    while (stack.length) {
+      const [a, b] = stack.pop(); let best = -1, bd = tol;
+      const [x1, y1] = pts[a], [x2, y2] = pts[b], dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1e-9;
+      for (let i = a + 1; i < b; i++) { const d = Math.abs(dy * pts[i][0] - dx * pts[i][1] + x2 * y1 - y2 * x1) / L; if (d > bd) { bd = d; best = i; } }
+      if (best >= 0) { keep[best] = 1; stack.push([a, best], [best, b]); }
+    }
+    return pts.filter((_, i) => keep[i]);
+  };
+  const ringArea = r => { let s = 0; for (let i = 0; i < r.length; i++) { const [x1, y1] = r[i], [x2, y2] = r[(i + 1) % r.length]; s += x1 * y2 - x2 * y1; } return Math.abs(s / 2); };
+  const regions = [];
+  for (const code of codes) {
+    let geo;
+    try { geo = await ecoregionGeometry(code); } catch (e) { console.log('  no geometry for ' + code); continue; }
+    let d = '';
+    for (const poly of geo.polys) {
+      const outer = poly[0];
+      if (!outer || ringArea(outer) < 0.004) continue;   // skip islets and slivers
+      // A ring is closed (its ends meet), so split it at the point farthest from the start and simplify each half.
+      let far = 0, fd = -1;
+      outer.forEach(([x, y], i) => { const dd = Math.hypot(x - outer[0][0], y - outer[0][1]); if (dd > fd) { fd = dd; far = i; } });
+      const pts = simplify(outer.slice(0, far + 1), 0.06).concat(simplify(outer.slice(far), 0.06).slice(1));
+      if (pts.length < 3) continue;
+      d += 'M' + pts.map(([lon, lat]) => X(lon).toFixed(1) + ',' + Y(lat).toFixed(1)).join('L') + 'Z';
+    }
+    if (d) regions.push({ code, name: titleCase(geo.name), d });
+    console.log('  ' + code + ' ' + geo.name + ' · ' + d.length + ' chars');
+  }
+  const file = path.join(OUT, 'usmap.js');
+  fs.writeFileSync(file, '// Generated by tools/catalog/build.js map — simplified EPA Level II ecoregion outlines (public domain).\n' +
+    'window.Trophic = window.Trophic || {};\nTrophic.US_MAP = ' + JSON.stringify({ width: W, height: H, regions }) + ';\n');
+  console.log('wrote ' + path.relative(ROOT, file) + ' · ' + regions.length + ' regions · ' + Math.round(fs.statSync(file).size / 1024) + ' KB');
+}
+
 (async () => {
+  if (opt.code === 'map') return writeMap();
   const codes = opt.code === 'all' ? await listCodes() : [opt.code];
   const failed = [];
   for (const c of codes) {
