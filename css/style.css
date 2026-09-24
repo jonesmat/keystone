@@ -726,3 +726,13 @@ table.harvest td.stale { color: #B7791F; }
 .eco-reg.built { cursor: pointer; }
 .eco-reg.built:hover { filter: brightness(0.92); }
 .eco-reg.sel { stroke: #1F2A24; stroke-width: 2.6; }
+
+/* Concept tooltips (P3-M8) */
+abbr.ctip { text-decoration: underline dotted rgba(29,101,112,0.7); text-underline-offset: 2px; text-decoration-thickness: 1px; cursor: help; }
+abbr.ctip:hover { color: var(--accent, #1D6570); text-decoration-style: solid; }
+.dark abbr.ctip, .card.dark abbr.ctip { text-decoration-color: rgba(255,255,255,0.6); }
+.dark abbr.ctip:hover { color: inherit; }
+#concept-tip { position: fixed; z-index: 1000; max-width: 300px; padding: 10px 12px; background: #1F2A24; color: #F7F3E8; border-radius: 8px; font-size: 12.5px; line-height: 1.45; box-shadow: 0 6px 20px rgba(0,0,0,0.25); pointer-events: none; }
+#concept-tip b { display: block; margin-bottom: 3px; font-size: 13px; }
+#concept-tip p { margin: 0 0 4px; }
+#concept-tip small { color: #B9C4BC; font-size: 11px; }

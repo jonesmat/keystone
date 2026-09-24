@@ -150,6 +150,9 @@ window.Trophic = window.Trophic || {};
       where: 'The Soil carbon overlay and the carbon figures in the left panel.', overlay: 'carbon', see: [] },
 
     // ---------- management ----------
+    { id: 'ehi', topic: 'Management', term: 'Ecosystem Health Index (EHI)',
+      def: 'A 0–100 score built from seven parts: energy pyramid integrity, biodiversity, population stability, nutrient, water and carbon balance, keystone and mutualist presence, habitat structure and small-population viability. You see it as a range until your surveys pin it down.',
+      where: 'The top bar, the steward panel and the report’s EHI card.', see: ['pyramid-energy', 'diversity', 'mvp'] },
     { id: 'sustainable-yield', topic: 'Management', term: 'Sustainable yield',
       def: 'A harvest a population can replace every year. It’s greatest when the population is held around half its carrying capacity, where it grows fastest.',
       where: 'Harvest limits in the Plan panel; the Harvest pressure overlay.', overlay: 'harvest', see: ['carrying-capacity'] },

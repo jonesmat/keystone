@@ -70,6 +70,7 @@ Win a scenario by finishing with an average EHI of 70 or more and every restorat
 | `tools/headless.js` | Run one world in Node: `node tools/headless.js 10 12345 [meadow\|generated]` |
 | `tools/check-events.js` | Smoke tests: fixed trait sheets, events, save round-trip, refusing an older version's save, generator rules |
 | `js/overlays.js` | Map overlays: soil nitrogen (from soil tests), seral stage, vegetation layers, edge vs interior, soil water, soil carbon, harvest pressure, territories, survey coverage and staleness, land use |
+| `js/concepttips.js` | Hover tooltips for ecology terms anywhere in the interface, linking to the Concepts tab |
 | `js/concepts.js` | The Codex's Concepts tab: textbook-neutral definitions of the ecology terms the game uses, and where each appears in play |
 | `tools/check-catalog-mix.js` | Catalog species-mix audit: can every catalog fill the slots its scenarios and Sandbox need? `node tools/check-catalog-mix.js [code …]` |
 | `js/stakeholders.js` | The steward's community: stakeholder types, asks, trust and the mandate, cost modifiers, land parcels, arrivals and departures, land sales and conservation easements |
@@ -244,6 +245,7 @@ Last `check-stakeholders.js` run: all checks pass.
 **P3-M8 part 2 (UI and classroom): built.**
 
 - **Rapid responses** in the action bar during the season: an emergency survey placed on the map (1.5× the cost of point counts), a fire crew on call (lightning fires now strike in summer, not at the start of the round, and a crew holds one to a fifth of its size; a wildfire alert shows when one starts), and spot removal of 15% of a known non-native species.
+- **Concept tooltips:** every ecology term in the interface (panels, report, Codex, New world screen) is underlined with a dotted line; hovering shows the concept's one-line definition and clicking opens its Concepts entry (`js/concepttips.js`, which finds terms in text as it's rendered).
 - **Watch list** (Season panel): species at risk (crashing this season, below a minimum viable population, or below ½K when studied), invasives and keystones, each with its survey status (sighted, surveyed N rounds ago, studied), then the biggest movers.
 - **Action cards** say when an action takes effect and which EHI components it tends to move (+, −, or either way).
 - **Harvest sliders** from 0 to half the estimate, with a tick at the take that would bring a studied species' estimate down to ½K.
