@@ -108,6 +108,7 @@ window.Trophic = window.Trophic || {};
   G.setBiome = function (b) { G.setup.biome = b; if (G.setup.mode === 'generated') G.regenerate(); G.renderNewWorld(); };
   G.setDifficulty = function (d) { G.setup.difficulty = d; G.renderNewWorld(); };
   G.setClimateTrend = function (on) { G.setup.climateTrend = !!on; };
+  G.setPrimary = function (on) { G.setup.primary = !!on; };
 
   G.cancelGen = function () { G.genToken = (G.genToken || 0) + 1; };
 
@@ -236,7 +237,7 @@ window.Trophic = window.Trophic || {};
     const seed = st.mode === 'generated' ? st.worldSeed || st.seed : st.seed;
     const scen = st.mode === 'catalog' && st.scenario ? T.scenarioById(st.scenario) : null;
     const biome = st.mode === 'catalog' ? st.roster.biome : B.biomes[st.mode === 'generated' ? st.biome : st.mode === 'channel' ? 'channel' : 'meadow'];
-    const world = T.createWorld({ seed, roster: st.roster, player: founder, biome, difficulty: diff, debug: G.settings.debug, climateTrend: !!st.climateTrend || !!(scen && scen.climateTrend) });
+    const world = T.createWorld({ seed, roster: st.roster, player: founder, biome, difficulty: diff, debug: G.settings.debug, climateTrend: !!st.climateTrend || !!(scen && scen.climateTrend), primary: !!st.primary });
     G.world = world;
     let mp = diff.startMP;
     if (st.ftab === 'roll') mp += B.rolledFounderMP;
@@ -456,6 +457,9 @@ window.Trophic = window.Trophic || {};
       case 'volcanic': run.activeEvents.push({ id, left: 2 }); break;
       case 'invasive': w.importSpecies(T.EVENT_SPECIES.marauder, T.EVENT_SPECIES.marauder.startPop, w.rng.pick([[4, 4], [60, 4], [4, 60], [60, 60]])); break;
       case 'plague': { const r = w.plague(); if (r) UI().toast('Plague: ' + r.species.name + ' lost ' + r.killed + ' individuals.', 'bad'); break; }
+      case 'wildfire': { const r = w.wildfire(); UI().toast('Wildfire burned ' + r.tiles + ' tiles. They regrow from the seed bank.', 'bad'); break; }
+      case 'flood': { const r = w.flood(); UI().toast('Flood: ' + r.tiles + ' low tiles under water.', 'bad'); break; }
+      case 'windthrow': { const r = w.windthrow(); UI().toast('Windstorm: ' + r.tiles + ' shrub and woodland tiles felled, opening light gaps.', 'bad'); break; }
       case 'migration':
         w.importSpecies(T.EVENT_SPECIES.wanderbuck, T.EVENT_SPECIES.wanderbuck.startPop, [2, 10 + w.rng.int(44)], { energy: 0.7 });
         run.activeEvents.push({ id, left: 1 });

@@ -121,6 +121,9 @@ window.Trophic = window.Trophic || {};
         g = gg + (col[1] - gg) * k + jit;
         b = gb + (col[2] - gb) * k + jit * 0.6;
         if (world.fruit[i] > 5) { const fk = Math.min(0.3, world.fruit[i] / 220); r += (224 - r) * fk; g += (130 - g) * fk; b += (150 - b) * fk; }
+        // Bare rock is grey; a burn scar stays dark for a round or two.
+        if (world.rock && world.rock[i]) { r = 150 + jit; g = 148 + jit; b = 140 + jit; }
+        if (world.burn && world.burn[i]) { const bk = 0.25 * world.burn[i]; r *= 1 - bk; g *= 1 - bk * 1.1; b *= 1 - bk * 1.1; }
         const det = Math.min(0.2, world.detr[i] / 500);
         r *= 1 - det; g *= 1 - det * 1.1; b *= 1 - det * 1.3;
       }

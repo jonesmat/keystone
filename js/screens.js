@@ -21,6 +21,7 @@ window.Trophic = window.Trophic || {};
     $('nw-biome').addEventListener('change', e => G.setBiome(e.target.value));
     $('nw-begin').addEventListener('click', () => G.beginRun());
     $('nw-climate').addEventListener('change', e => G.setClimateTrend(e.target.checked));
+    $('nw-volcanic').addEventListener('change', e => G.setPrimary(e.target.checked));
     $('nw-eco').addEventListener('change', e => G.setEcoregion(e.target.value));
     $('nw-scen').addEventListener('change', e => G.setScenario(e.target.value));
     $('nw-reroll').addEventListener('click', () => G.rerollFounder());
@@ -78,6 +79,7 @@ window.Trophic = window.Trophic || {};
     share.hidden = !(cat && st.roster && st.roster.seedString);
     if (!share.hidden) share.textContent = 'Share this world: ' + st.roster.seedString + ' (paste it into the seed box)';
     S.renderStability();
+    renderWhittaker(cat ? st.roster && st.roster.biome : B.biomes[st.mode === 'generated' ? st.biome : st.mode === 'channel' ? 'channel' : 'meadow']);
     renderRoster(st.roster, st.stability.state === 'running');
     renderFounder();
     document.querySelectorAll('#nw-difficulty button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.diff === st.difficulty)));
@@ -118,6 +120,26 @@ window.Trophic = window.Trophic || {};
     }
     $('nw-begin').disabled = st.mode === 'generated' && s.state === 'running';
   };
+
+  // A small Whittaker diagram (mean temperature against precipitation) with the world's climate on it.
+  const WHIT_COLORS = { tundra: '#C9D3D6', taiga: '#8FAE9A', desert: '#E6CFA0', grassland: '#D6D48E', forest: '#9CC08A', tropSeasonal: '#B7C97A', rainforest: '#6FA57A' };
+  function renderWhittaker(biome) {
+    const box = $('nw-whittaker');
+    if (!biome) { box.replaceChildren(); return; }
+    const W0 = 220, H0 = 120, maxP = 400, minT = -15, maxT = 30;
+    const px = p => (Math.min(p, maxP) / maxP) * W0, py = t => H0 - ((t - minT) / (maxT - minT)) * H0;
+    const g = T.UI.svg('svg', { viewBox: '0 0 ' + W0 + ' ' + H0, class: 'whit-svg', role: 'img', 'aria-label': 'Whittaker biome diagram' });
+    const cols = 40, rows = 24;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const p = ((c + 0.5) / cols) * maxP, t = maxT - ((r + 0.5) / rows) * (maxT - minT);
+      g.append(T.UI.svg('rect', { x: (c / cols) * W0, y: (r / rows) * H0, width: W0 / cols + 0.3, height: H0 / rows + 0.3, fill: WHIT_COLORS[T.whittaker(t, p).id] }));
+    }
+    g.append(T.UI.svg('circle', { cx: px(biome.rain), cy: py(biome.tMean), r: 4.5, fill: '#1F2A24', stroke: '#fff', 'stroke-width': 1.5 }));
+    const b = T.whittaker(biome.tMean, biome.rain);
+    box.replaceChildren(el('div', { class: 'whit-fig' }, g,
+      el('div', { class: 'whit-axes caption', text: 'Precipitation 0–400 cm/yr → · temperature −15 to 30 °C ↑' })),
+      el('p', { class: 'caption' }, el('b', { text: b.name }), ' · ' + biome.tMean.toFixed(0) + ' °C, ' + Math.round(biome.rain) + ' cm/yr · climax: ' + b.climaxName));
+  }
 
   function renderRoster(roster, pending) {
     const box = $('nw-roster');

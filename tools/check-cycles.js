@@ -8,6 +8,7 @@
 //   - with the CO2 trend on, the warm south edge loses producers faster than the cool north edge
 const T = require('./load.js');
 const B = T.BALANCE;
+B.succession.natural = false;   // cycle tests isolate their own mechanism; disturbances are tested in check-succession.js
 
 const args = process.argv.slice(2);
 const opt = { seeds: 2, rounds: 6, set: [] };

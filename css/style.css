@@ -560,3 +560,10 @@ h3.h-serif { font-size: 16px; }
 .age-row .bar i { display: block; height: 100%; border-radius: 2px; }
 .age-row .bar.m i { background: #6f9fd8; }
 .age-row .bar.f i { background: #d88f6f; }
+
+/* Whittaker biome diagram on the New world screen (P3-M6) */
+.whittaker { margin: 12px 0 4px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.whittaker p { margin: 0; max-width: 260px; }
+.whit-fig { display: grid; gap: 2px; max-width: 260px; }
+.whit-svg { width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--line); }
+.whit-axes { font-size: 10px; }

@@ -227,6 +227,7 @@ window.Trophic = window.Trophic || {};
     w.setProducers(opts.roster.producers);
     w._generateTerrain();
     w._initCycles(true);
+    w._initSuccession(!!opts.primary);
     // Real (catalog) species have fixed traits, as Phase 3 intends: they don't mutate.
     for (const def of opts.roster.species) w.addSpecies(def, false).mu = def.catalogKey ? 0 : diff.npcMu;
     if (opts.player) w.player = w.addSpecies(opts.player, true);
@@ -606,6 +607,7 @@ window.Trophic = window.Trophic || {};
     this._demographyRoundEnd();
     if (round) this.round = round;
     this._cyclesBeginRound();
+    this._successionBeginRound();
     this._regionsBeginRound();
     this.roundTick = 0;
     this.seasonIdx = 0;
@@ -843,6 +845,7 @@ window.Trophic = window.Trophic || {};
     for (let k = 0; k < n0; k++) if (ents[k].alive) this._reproduce(ents[k]);
     this._decay();
     this._cyclesTick();
+    this._successionTick();
     if (this.t % B.populations.update === 0) this._updatePopulations();
     this._demographyTick();
     this._groundwater();
@@ -1784,12 +1787,13 @@ window.Trophic = window.Trophic || {};
       carrion: this.carrion.filter(c => c.alive).map(c => [r2(c.x), r2(c.y), r2(c.E), c.src, c.lv, r3(c.N)]),
       cycles: this._cyclesState(),
       demography: this._demographyState(),
+      succession: this._successionState(),
       populations: Object.fromEntries(this.species.filter(sp => sp.grid).map(sp => [sp.idx, this._popState(sp)])),
     };
   };
 
   // Saves carry this version; any other is from an older game and isn't loaded (no migrations).
-  T.SAVE_VERSION = 3;
+  T.SAVE_VERSION = 4;
 
   T.loadWorld = function (s, opts) {
     if (!s || s.v !== T.SAVE_VERSION) throw new Error('This save is from an older version of Keystone and cannot be loaded');
@@ -1808,6 +1812,7 @@ window.Trophic = window.Trophic || {};
     w.moist.set(s.moist); w.elev.set(s.elev); w.pgGrowth.set(s.pgGrowth); w.pgTough.set(s.pgTough); w.pgTol.set(s.pgTol);
     w._computeShade();
     w._restoreCycles(s.cycles);
+    w._successionRestore(s.succession);
     const pool = T.b64.decode(s.genomes);
     const ng = s.ng;
     const idMap = {};

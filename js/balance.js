@@ -248,6 +248,33 @@ Trophic.BALANCE = {
     groupRadius: [2, 6],    // vertebrate groups: tiles within this of a member (by roam) make up the group's region
   },
 
+  // ---------- Phase 3: succession and disturbance (js/succession.js) ----------
+  // Stages: 0 bare rock, 1 pioneers, 2 grasses and forbs, 3 shrubs and young trees, 4 mature forest.
+  succession: {
+    every: 60,              // ticks between succession steps (20 per round)
+    startSom: 150,          // soil organic matter of an established soil
+    som: [0, 0, 20, 45, 70],        // organic matter a tile needs to reach each stage
+    nMin: [0, 0, 0.3, 0.8, 1.2],    // mineral nitrogen (ammonium + nitrate) it needs
+    humify: 0.004,          // share of the tile's detritus turned into organic matter per step
+    mineralize: 0.002,      // share of organic matter lost per step
+    pioneerSoil: 0.6,       // organic matter pioneers add per step by weathering rock
+    establish: 0.02,        // chance per step that a seed that has arrived establishes (a stage takes 2–4 rounds)
+    seedTries: 5,           // neighbouring tiles sampled for seed rain per step
+    longSeed: 0.03,         // chance per step of a seed from anywhere on the map
+    dispersal: [0, 14, 8, 5, 4],    // seed range in tiles, by stage: fugitives far, climax species near (birds and squirrels carry nuts)
+    longevity: [0, 3, 4, 10, 30],   // rounds a tile's producer lives, by stage (shrubs and trees then leave a gap)
+    riparianMoist: 0.72,    // grassland and desert tiles this wet can grow gallery woodland (climax + 2)
+    natural: true,          // lightning fires and windthrow happen on their own
+    fireChance: { grassland: 0.3, desert: 0.1, forest: 0.08, taiga: 0.12, tundra: 0.02, tropSeasonal: 0.15, rainforest: 0.02 },
+    fireSize: [30, 160],    // tiles a fire burns
+    fireSpread: 0.9,
+    fireKill: 0.5,          // share of ground-living Population individuals on a burned tile that die
+    burnScar: 2,            // rounds a burn scar stays visible
+    floodRise: 0.05,        // elevation above the water line a flood reaches
+    windthrowShare: 0.06,   // share of shrub and woodland tiles a windstorm fells
+    windthrowChance: 0.15,
+  },
+
   // ---------- Phase 3: demography (js/demography.js) ----------
   // The regional pool behind the map edges, emigration above 0.8 K, mating systems and territories.
   demography: {

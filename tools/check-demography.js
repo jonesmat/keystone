@@ -75,7 +75,9 @@ console.log('\nSexes and mating systems');
     lone.x = w3.N - 5; lone.y = w3.N - 5;
     w3._rebuildGrid();
     const alone = w3._canBreedHere(lone);
-    for (const e of others.slice(0, 3)) { e.x = lone.x + 1; e.y = lone.y; }
+    const company = others.filter(o => o.alive && o.grow >= 1).slice(0, 3);
+    while (company.length < 3) company.push(w3.spawn(ex, 1, 1, lone.E, T.sampleGenome(ex.genome, w3.rng, B.founderSigma), { grow: 1 }));
+    for (const e of company) { e.x = lone.x + 1; e.y = lone.y; }
     w3._rebuildGrid();
     check(!alone && w3._canBreedHere(lone), ex.name + ' (explosive) spawns only with others of its kind nearby');
   }

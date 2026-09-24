@@ -295,7 +295,13 @@ window.Trophic = window.Trophic || {};
     const carbon = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Carbon' }),
       row(s.carbonBalance >= 0 ? 'Net sink this round' : 'Net source this round', sign(s.carbonBalance)),
       row('CO₂', Math.round(s.co2) + ' ppm' + (s.tOffset > 0.05 ? ' · +' + s.tOffset.toFixed(1) + ' °C' : '')));
-    box.replaceChildren(n, water, carbon);
+    const sr = w.seralSummary(), bc = w.biomeClass;
+    const sere = el('div', { class: 'cy-block' }, el('div', { class: 'cy-title', text: 'Succession · ' + bc.name }),
+      row('Pioneers · grasses', pct(sr.share[1]) + ' · ' + pct(sr.share[2])),
+      row('Shrubs · mature forest', pct(sr.share[3]) + ' · ' + pct(sr.share[4])),
+      row('Climax', bc.climaxName));
+    if (sr.share[0] > 0.02) sere.append(el('div', { class: 'cy-warn', text: pct(sr.share[0]) + ' bare rock or bare ground' }));
+    box.replaceChildren(n, water, carbon, sere);
   };
 
   // A Population: one species' group in one connected region. Individuals in small-taxa Populations can't be
@@ -557,7 +563,16 @@ window.Trophic = window.Trophic || {};
         if (anaerobic) kv.append(el('div', null, 'Soil ', el('b', { text: anaerobic })));
         if (w.peat[i] > 1) kv.append(el('div', null, 'Peat ', el('b', { text: fmt(w.peat[i]) + ' EU' })));
       }
-      if (P && P.fixer) kv.append(el('div', null, 'Legume ', el('b', { text: 'fixes nitrogen' })));
+      if (P && P.fixer) kv.append(el('div', null, 'Fixes nitrogen ', el('b', { text: P.habit === 'lichen' ? 'cyanobacteria (lichen)' : 'root nodules (legume)' })));
+      if (!w.terrain[i] && w.som) {
+        const stg = w.rock[i] ? 0 : P ? P.stage : 0;
+        kv.append(el('div', null, 'Seral stage ', el('b', { text: (P || w.rock[i] ? T.SERAL_STAGES[stg] : 'Bare ground') + (w.burn[i] ? ' · burned' : '') })),
+          el('div', null, 'Climax here ', el('b', { text: T.SERAL_STAGES[w.climaxAt(i)] })),
+          el('div', null, 'Soil organic matter ', el('b', { text: fmt(w.som[i]) })));
+        if (P && P.stage >= 3) kv.append(el('div', null, 'Age ', el('b', { text: w.sAge[i].toFixed(1) + ' / ' + P.longevity + ' rounds' })));
+        const bank = [0, 1, 2].map(k => w.producers[w.bank[i * 3 + k]]).filter(Boolean).map(p => p.name);
+        if (bank.length) kv.append(el('div', { style: { gridColumn: '1 / -1' } }, 'Seed bank ', el('b', { text: [...new Set(bank)].join(', ') })));
+      }
       if (w.fruit[i] > 0.5) kv.append(el('div', null, 'Fruit ', el('b', { text: fmt(w.fruit[i]) + ' EU' })));
       box.append(kv);
       if (P) {

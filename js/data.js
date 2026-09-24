@@ -162,6 +162,9 @@ window.Trophic = window.Trophic || {};
     { id: 'plague',   name: 'Plague',           effect: 'The most populous species loses 30% of individuals.', chip: 'plague', rounds: 0 },
     { id: 'bloom',    name: 'Bloom',            effect: 'Producer growth +50% for 1 round.', chip: 'producer growth +50%', rounds: 1 },
     { id: 'migration', name: 'Migration wave',  effect: 'A herd of Wanderbucks crosses the map.', chip: 'herd crossing', rounds: 1 },
+    { id: 'wildfire', name: 'Wildfire',         effect: 'A fire spreads through dry growth; burned tiles restart at the grasses stage.', chip: 'wildfire', rounds: 0 },
+    { id: 'flood',    name: 'Flood',            effect: 'Low ground loses its growth and is waterlogged, so it denitrifies for a while.', chip: 'flood', rounds: 0 },
+    { id: 'windthrow', name: 'Windstorm',       effect: 'Scattered shrubs and trees fall, opening light gaps.', chip: 'light gaps', rounds: 0 },
   ];
 
   T.TUTORIAL = {
