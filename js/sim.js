@@ -258,7 +258,7 @@ window.Trophic = window.Trophic || {};
       stats: null, foods: null, preyLevels: null, spriteKey: '', extinctRound: null,
       // Catalog species (Phase 3): the real species behind the definition.
       meta: def.meta || (def.catalogKey ? { sci: def.sci, native: def.native, iucn: def.iucn, catalogKey: def.catalogKey, taxon: def.taxon,
-        roles: def.roles, massKg: def.massKg, slot: def.slot } : null),
+        roles: def.roles, massKg: def.massKg, slot: def.slot, tweaks: def.tweaks || null } : null),
     };
     this.species.push(sp);
     this.refreshSpecies(sp);

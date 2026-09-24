@@ -138,6 +138,7 @@ window.Trophic = window.Trophic || {};
       fixer: !!s.fixer, native: s.native, iucn: s.iucn, catalogKey: s.key, hue: Math.round((h - 0.5) * 30),
       color: col.map((c, k) => clamp(Math.round(c + (hash(s.key + ':' + k) - 0.5) * 24), 0, 255)), pattern: 'plain',
       tOpt: cat.climate.tMean, share: share || 1,
+      tweaks: T.SpriteTweaks ? T.SpriteTweaks.forSpecies(s, cat) : null,   // P3-ART sprite (Codex portrait)
       note: codexNote(s, cat),
     };
   };
@@ -193,6 +194,7 @@ window.Trophic = window.Trophic || {};
       stratum: s.strata || null, activity: s.activity || null,
       hue: Math.round((hash(s.key) - 0.5) * 40),
       behavior: roleLine(s), weakness: '', note: codexNote(s, cat),
+      tweaks: T.SpriteTweaks ? T.SpriteTweaks.forSpecies(s, cat) : null,   // P3-ART sprite
     };
   };
 

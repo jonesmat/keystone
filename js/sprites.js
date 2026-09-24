@@ -224,20 +224,29 @@ window.Trophic = window.Trophic || {};
     ctx.restore();
   };
 
-  // Cached sprite canvases keyed by quantized genome.
+  // Catalog species (Phase 3) carry a tweak set and draw from their taxon group's template (js/templates.js);
+  // everything else (the fictional worlds' species) keeps the genome-driven creature above.
+  const templated = sp => !!(sp && sp.tweaks && T.SpriteTemplates && T.SpriteTemplates.has(sp.tweaks));
+  function drawAny(ctx, sp, len, opts) {
+    if (templated(sp)) T.SpriteTemplates.draw(ctx, sp.tweaks, len, opts);
+    else T.drawCreature(ctx, sp, len, opts);
+  }
+  T.drawSpecies = drawAny;
+
+  // Cached sprite canvases, per species (template sprites) or quantized genome, and size bucket.
   const cache = new Map();
   T.getSprite = function (key, sp, px) {
     const bucket = px <= 28 ? 28 : px <= 56 ? 56 : 112;
-    const k = key + '|' + bucket;
+    const k = (templated(sp) ? 'tw:' + sp.tweaks.tpl + ':' + sp.tweaks.key : key) + '|' + bucket;
     let c = cache.get(k);
     if (!c) {
       c = document.createElement('canvas');
       c.width = bucket * 2; c.height = Math.round(bucket * 1.5);
       const ctx = c.getContext('2d');
       ctx.translate(bucket, bucket * 0.9);
-      T.drawCreature(ctx, sp, bucket * 1.3, { t: 0, noShadow: true });
+      drawAny(ctx, sp, bucket * 1.3, { t: 0, noShadow: true });
       cache.set(k, c);
-      if (cache.size > 200) cache.delete(cache.keys().next().value);
+      if (cache.size > 300) cache.delete(cache.keys().next().value);
     }
     return c;
   };
@@ -247,7 +256,15 @@ window.Trophic = window.Trophic || {};
     opts = opts || {};
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
+    if (!opts.keep) ctx.clearRect(0, 0, W, H);
+    if (templated(sp)) {
+      // Template frame: about 1 unit long, ground 0.3 below the origin, room for 0.95 above it.
+      const len = Math.min(W * 0.62, H * 0.82) * (opts.scale || 1);
+      ctx.save(); ctx.translate(W * 0.5, H * 0.88 - len * 0.3 + (opts.bob || 0));
+      T.SpriteTemplates.draw(ctx, sp.tweaks, len, opts);
+      ctx.restore();
+      return;
+    }
     ctx.save();
     const v = view(sp.genome);
     const flight = v.flight >= 0.5;
