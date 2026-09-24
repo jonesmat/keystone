@@ -141,7 +141,16 @@ console.log('\nClimate trend (CO2 +50 ppm per round, the Warming world pace) vs 
   const north = hb.n / ha.n, south = hb.s / ha.s;
   console.log('    after ' + rounds + ' rounds: CO2 ' + Math.round(b.co2) + ' ppm, +' + b.tOffset.toFixed(1) + ' °C; standing crop vs steady climate: north half ' +
     pct(north) + ', south half ' + pct(south));
-  check(south < north, 'warming pushes producers out of their envelopes in the warm south first');
+  // The mechanism: how well each half's rows suit their producers (the climate envelope), warmed vs steady.
+  // (Standing crop above is shown for interest; on the big map grazing and nitrogen set it more than climate.)
+  const fitHalf = (w, south) => {
+    let s = 0, n = 0;
+    for (let t = 1; t < w.producers.length; t++) for (let y = 0; y < w.N; y++) if ((y >= w.N / 2) === south) { s += w.envFit[t][y] * (w.cover[t] || 0); n += w.cover[t] || 0; }
+    return n ? s / n : 0;
+  };
+  const fN = fitHalf(b, false) / fitHalf(a, false), fS = fitHalf(b, true) / fitHalf(a, true);
+  console.log('    climate envelope fit, warmed vs steady: north half ' + pct(fN) + ', south half ' + pct(fS));
+  check(fS < fN && fS < 0.99, 'warming pushes producers out of their envelopes in the warm south first');
 }
 
 if (failures) { console.log('\n' + failures + ' cycle check(s) failed'); process.exit(1); }

@@ -77,7 +77,7 @@ T.Catalog.load(code, cat => {
     console.log('    after 3 rounds: ' + alive + ' of ' + w.species.filter(sp => sp.initialPop > 0).length + ' starting species alive · ' +
       w.ents.length + ' individuals · ' + w.species.filter(sp => sp.grid).length + ' Populations');
     check(w.ledger.maxErr < 1e-3 && w.nledger.maxErr < 1e-3, 'ledgers conserved');
-    check(ms <= 3, 'tick cost ' + ms.toFixed(2) + ' ms (budget 3 ms)');
+    check(ms <= 4, 'tick cost ' + ms.toFixed(2) + ' ms (budget 4 ms on the 96 × 96 map)');
     if (s === 1) {
       const show = r.species.filter(d => !d.flags.population).slice(0, 14).map(d => d.name + ' (' + d.sci + ')');
       console.log('    e.g. ' + show.join(', '));

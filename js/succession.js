@@ -266,7 +266,7 @@ window.Trophic = window.Trophic || {};
   // Wildfire: spreads from a start tile through dry fuel. Standing crop burns to litter; secondary succession follows.
   W.wildfire = function (start, maxTiles) {
     const N = this.N, P = S(), rng = this.wrng;
-    maxTiles = maxTiles || P.fireSize[0] + rng.int(P.fireSize[1] - P.fireSize[0] + 1);
+    maxTiles = maxTiles || Math.round((P.fireSize[0] + rng.int(P.fireSize[1] - P.fireSize[0] + 1)) * B.areaScale);
     if (start == null) {
       for (let k = 0; k < 200 && start == null; k++) { const i = rng.int(N * N); if (!this.terrain[i] && this.ptype[i]) start = i; }
     }

@@ -39,7 +39,7 @@ window.Trophic = window.Trophic || {};
   W._seedPopulation = function (sp, count) {
     if (!sp.grid) this._newGrid(sp);
     const g = sp.grid, st = sp.stats, N = this.N, rng = this.rng, P = PB();
-    const blobs = P.seedBlobs[0] + rng.int(P.seedBlobs[1] - P.seedBlobs[0] + 1);
+    const blobs = Math.round((P.seedBlobs[0] + rng.int(P.seedBlobs[1] - P.seedBlobs[0] + 1)) * B.areaScale);
     const tiles = [];
     for (let b = 0; b < blobs; b++) {
       let c = -1;
@@ -80,9 +80,10 @@ window.Trophic = window.Trophic || {};
 
   // ---------- the update ----------
 
+  // Each Population steps every `update` ticks; species are spread across those ticks so the work is even.
   W._updatePopulations = function () {
-    const dt = PB().update;
-    for (const sp of this.species) if (sp.grid) this._popStep(sp, dt);
+    const dt = PB().update, phase = this.t % dt;
+    for (const sp of this.species) if (sp.grid && sp.idx % dt === phase) this._popStep(sp, dt);
     if (this.t % PB().regionEvery === 0) this.updateRegions();
   };
 
@@ -242,10 +243,12 @@ window.Trophic = window.Trophic || {};
         if (body <= 0.5) continue;
         const amt = Math.min(left, body * 0.5);
         const f = amt / body, killed = (pg.nJ[j] + pg.nA[j] + pg.nO[j]) * f, nIn = pg.Nn[j] * f;
-        for (const k of ['nJ', 'nA', 'nO', 'E', 'Tt', 'Nn']) pg[k][j] -= pg[k][j] * f;
-        const rs = this.rstats[b.idx];
+        const keep = 1 - f;
+        pg.nJ[j] *= keep; pg.nA[j] *= keep; pg.nO[j] *= keep; pg.E[j] *= keep; pg.Tt[j] *= keep; pg.Nn[j] *= keep;
+        pg.total -= killed;   // keep the running count true between the prey's own updates
+        const rs = this.rstats[b.idx], key = sp.killKey || (sp.killKey = 'k:' + sp.id);
         rs.predLoss += amt;
-        addCount(b, 'k:' + sp.id, killed, rs.deaths, 'k:' + sp.id);
+        addCount(b, key, killed, rs.deaths, key);
         this._popBook(sp, i, amt, st.meatA, b.name, b.level, nIn);
         left -= amt;
       }
@@ -312,10 +315,12 @@ window.Trophic = window.Trophic || {};
     const f = amt / body;
     const killed = (g.nJ[i] + g.nA[i] + g.nO[i]) * f;
     const nIn = g.Nn[i] * f;
-    for (const k of ['nJ', 'nA', 'nO', 'E', 'Tt', 'Nn']) g[k][i] -= g[k][i] * f;
-    const rs = this.rstats[prey.idx];
+    const keep = 1 - f;
+    g.nJ[i] *= keep; g.nA[i] *= keep; g.nO[i] *= keep; g.E[i] *= keep; g.Tt[i] *= keep; g.Nn[i] *= keep;
+    g.total -= killed;
+    const rs = this.rstats[prey.idx], key = pred.sp.killKey || (pred.sp.killKey = 'k:' + pred.sp.id);
     rs.predLoss += amt;
-    addCount(prey, 'k:' + pred.sp.id, killed, rs.deaths, 'k:' + pred.sp.id);
+    addCount(prey, key, killed, rs.deaths, key);
     addCount(prey, 'kills:' + pred.sp.id, killed, this.rstats[pred.sp.idx].kills, prey.id);
     return { amt, nIn };
   };

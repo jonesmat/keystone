@@ -5,11 +5,11 @@ window.Trophic = window.Trophic || {};
 Trophic.BALANCE = {
 
   // World
-  worldSize: 64,            // tiles per side
+  worldSize: 96,            // tiles per side (numbers tuned per 64 × 64 scale with the area: see areaScale below)
   tilePx: 16,               // world pixels per tile (renderer)
   ticksPerSecond: 10,
   roundTicks: 1200,         // 120 s at 1x
-  maxConsumers: 2000,
+  maxConsumers: 4500,
 
   // Sunlight
   sunlightPerTile: 10,      // EU per tile per tick at 100% light
@@ -92,7 +92,7 @@ Trophic.BALANCE = {
   // GPP -> plant respiration -> NPP -> harvesting -> assimilation -> metabolism -> tissue growth (NSP).
   energyMode: 'game',
   modes: {
-    // Game: scaled efficiencies that keep endotherm predators viable on a 64 x 64 map.
+    // Game: scaled efficiencies that keep endotherm predators viable on the map.
     game:    { id: 'game',    name: 'Game',    C_photo: 0.20, sunMult: 3,  thermoScale: 1 },
     // Realism: the textbook's ranges; sunlight x 20 of Game's so absolute EU stay workable at 1% capture.
     // sunMult is 3 in Game because only a third of NPP is edible (edibleDefault), so grazers see Phase 2's growth.
@@ -181,7 +181,7 @@ Trophic.BALANCE = {
   // Small, numerous taxa (soil fauna, decomposers, plankton grazers, insects) aren't simulated as individuals but as
   // Populations: per-tile densities of juveniles, adults and old individuals, with pooled reserves, tissue and nitrogen.
   populations: {
-    update: 10,             // ticks between Population updates
+    update: 20,             // ticks between a Population's updates (species take turns, spread over these ticks)
     regionEvery: 50,        // ticks between recomputing regions (connected areas) and matching them to the last ones
     occupied: 0.5,          // a tile is part of a region above this many individuals
     breedAt: 0.55,          // reserves (share of full) above which adults breed
@@ -292,7 +292,7 @@ Trophic.BALANCE = {
   },
 
   // Catalog worlds: individual vertebrates at the start, shared out by trophic level (smaller species get more).
-  // About what the 64 × 64 map's producers carry at the current energetics; Populations are counted separately.
+  // About what a 64 × 64 area's producers carry at the current energetics (scaled up by areaScale); Populations are counted separately.
   vertebrateBudget: 280,
   budgetShare: { herbivore: 0.62, omnivore: 0.23, carnivore1: 0.12, carnivore2: 0.03 },
 
@@ -307,3 +307,7 @@ Trophic.BALANCE = {
     apex:     { name: 'Apex',     startSP: 25, income: 0.8, scoreMult: 1.5 },
   },
 };
+
+// Starting numbers, caps, Population seeding and fire sizes were tuned on a 64 × 64 map; they scale with the area.
+// Distances (seed dispersal, territories, action brushes, sight) stay in tiles.
+Trophic.BALANCE.areaScale = (Trophic.BALANCE.worldSize / 64) * (Trophic.BALANCE.worldSize / 64);

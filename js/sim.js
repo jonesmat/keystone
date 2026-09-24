@@ -217,7 +217,8 @@ window.Trophic = window.Trophic || {};
     w._initCycles(true);
     w._initSuccession(!!opts.primary);
     // Every species has a fixed trait sheet (Phase 3): individuals share it and nothing evolves.
-    for (const def of opts.roster.species) w.addSpecies(def);
+    // Rosters give starting numbers for a 64 × 64 area; they scale with the map.
+    for (const def of opts.roster.species) w.addSpecies(Object.assign({}, def, { startPop: Math.round((def.startPop || 0) * B.areaScale) }));
     w._initDemography(opts.roster.pool || [], opts.closed);
     w._populate();
     for (const sp of w.species) sp.initialPop = w.countPops().count[sp.idx];
@@ -327,8 +328,10 @@ window.Trophic = window.Trophic || {};
 
   World.prototype._generateTerrain = function () {
     const rng = this.rng;
-    const nE1 = makeNoise(rng, 4), nE2 = makeNoise(rng, 9), nM = makeNoise(rng, 5);
-    const nWood = makeNoise(rng, 6), nTall = makeNoise(rng, 8), nVine = makeNoise(rng, 7);
+    // Noise cells scale with the map, so lakes, woods and wet ground keep their size in tiles.
+    const k = N / 64, cells = c => Math.max(2, Math.round(c * k));
+    const nE1 = makeNoise(rng, cells(4)), nE2 = makeNoise(rng, cells(9)), nM = makeNoise(rng, cells(5));
+    const nWood = makeNoise(rng, cells(6)), nTall = makeNoise(rng, cells(8)), nVine = makeNoise(rng, cells(7));
     const elevs = [];
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const i = y * N + x;
@@ -719,7 +722,7 @@ window.Trophic = window.Trophic || {};
     this._successionTick();
     this._interactionsTick();
     this._stewardTick();
-    if (this.t % B.populations.update === 0) this._updatePopulations();
+    this._updatePopulations();
     this._demographyTick();
     this._groundwater();
 
@@ -745,7 +748,9 @@ window.Trophic = window.Trophic || {};
     const fruiting = this.seasonIdx <= 1;
     const book = this.pbook, cb = this.cbook, NB = B.nitrogen;
     let captured = 0, heat = 0, stored = 0;
-    for (let i = 0; i < NT; i++) {
+    // Half the tiles grow each tick, with a two-tick step (the map is large; plants change slowly).
+    const dt = 2;
+    for (let i = this.t % dt; i < NT; i += dt) {
       const t = this.ptype[i];
       if (!t) continue;
       const P = this.producers[t];
@@ -756,7 +761,7 @@ window.Trophic = window.Trophic || {};
       let e = this.pE[i];
       if (litterRate > 0 && e > 0) {
         // Litterfall: old leaves and stems drop, so a stand at its cap keeps producing to replace them.
-        const lit = e * litterRate + (e > max ? (e - max) * 0.01 : 0);
+        const lit = Math.min(e, (e * litterRate + (e > max ? (e - max) * 0.01 : 0)) * dt);
         e -= lit;
         this.pE[i] = e;
         this.detr[i] += lit;
@@ -765,10 +770,10 @@ window.Trophic = window.Trophic || {};
       }
       if (e >= max) continue;
       let leaf = floor + (1 - floor) * Math.min(1, e / P.max);
-      if (this.regrow[i] > 0) { this.regrow[i]--; leaf *= 0.3; }
+      if (this.regrow[i] > 0) { this.regrow[i] = Math.max(0, this.regrow[i] - dt); leaf *= 0.3; }
       // Moisture fit (soil water from the water budget) and the producer's temperature envelope.
       const fit = (1 - 0.4 * Math.abs(this.moist[i] - this.pgTol[i])) * this.envFit[t][(i / N) | 0];
-      let cap = L0 * this.shade[i] * C * leaf * P.leaf * this.growthMod * gg * fit * (1 - 0.05 * tough);
+      let cap = L0 * this.shade[i] * C * leaf * P.leaf * this.growthMod * gg * fit * (1 - 0.05 * tough) * dt;
       // Legumes feed their root-nodule bacteria part of their production in exchange for fixed nitrogen.
       const cost = P.fixer ? NB.legumeCost : 0;
       // Only the edible share of NPP (leaf and fruit) joins the grazeable standing crop. Stems, roots and wood
@@ -780,7 +785,7 @@ window.Trophic = window.Trophic || {};
       // 20% as ammonia, and stop growing when the soil runs out. Legumes use soil N when it's there and have their
       // nodule bacteria fix the shortfall, plus a little extra that leaks to the soil as ammonia.
       const need = npp * nP;
-      cb.tileTicks++;
+      cb.tileTicks += dt;
       if (P.fixer) {
         const fromSoil = Math.min(need, this.no3[i] + this.nh4[i]);
         this._drawSoilN(i, fromSoil);
@@ -793,7 +798,7 @@ window.Trophic = window.Trophic || {};
         if (avail < need) {
           const k = avail / need;
           npp *= k; store *= k; cap *= k;
-          cb.nLimitedTicks++;
+          cb.nLimitedTicks += dt;
         }
         this._drawSoilN(i, npp * nP);
       }
@@ -1427,7 +1432,7 @@ window.Trophic = window.Trophic || {};
   World.prototype._breedThr = function (e) {
     const sp = e.sp;
     const n = this.popCount[sp.idx] || 0;
-    if (sp.level === 'decomposer' && n >= B.decomposerCap) return 2;
+    if (sp.level === 'decomposer' && n >= B.decomposerCap * B.areaScale) return 2;
     let thr = B.breedingThreshold;
     const cap = B.maxConsumers * B.densityShare;
     if (n > cap) thr += (B.densityStep * (n - cap)) / (B.maxConsumers * 0.05);
