@@ -286,7 +286,7 @@ window.Trophic = window.Trophic || {};
       for (const s of f.species) {
         entries.push(s);
         if (s.level === 'producer') {
-          const d = Cat.producerDef(s, cat, producers.length, f.slot.startShare === 'dominant' ? 4 : f.slot.start === 'seedbank' ? 0.15 : 1);
+          const d = Cat.producerDef(s, cat, producers.length, f.slot.startShare === 'dominant' ? 20 : f.slot.start === 'seedbank' ? 0.15 : 1);
           if (f.slot.start === 'seedbank') d.seedbank = true;   // weighted up in tiles' seed banks
           producers.push(d);
         }

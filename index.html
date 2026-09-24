@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#FBF8F1">
-  <meta name="description" content="Keystone: an HTML5 ecosystem game about energy flowing through a living food web.">
+  <meta name="description" content="Keystone: steward a real ecosystem through 30 years of droughts, invasions and competing demands.">
   <title>Keystone</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 29 28H3Z' fill='%235E9E45' stroke='%231F2A24' stroke-width='2'/%3E%3Cpath d='M16 3 22.5 15.5h-13Z' fill='%23C9483F'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,17 +19,19 @@
   <section id="screen-world" class="world" hidden>
     <header class="bar">
       <div class="brand">Keystone</div>
-      <div class="bar-title"><div class="eyebrow" id="tb-biome">Temperate Meadow</div><div class="bar-sub"><b id="tb-round">Round 1</b> <span class="dim" id="tb-of">of 30 · Simulate</span></div></div>
+      <div class="bar-title"><div class="eyebrow" id="tb-biome">Temperate Meadow</div><div class="bar-sub"><b id="tb-round">Round 1</b> <span class="dim" id="tb-of">of 30 · Plan</span></div></div>
       <div class="season" id="tb-season" aria-label="Season"></div>
       <div id="tb-event" class="chip chip-green" hidden></div>
       <div class="bar-spacer"></div>
+      <div class="pill-stat" title="Stewardship Points fund management actions"><span>SP</span><b class="mono" id="tb-sp">0</b></div>
+      <div class="pill-stat" title="Ecosystem Health Index, 0–100"><span>EHI</span><b class="mono" id="tb-ehi">—</b></div>
       <div class="season-left"><div class="eyebrow">Season left</div><div class="mono big" id="tb-timer">02:00</div></div>
       <div class="speed" role="group" aria-label="Simulation speed">
         <button data-speed="0" title="Pause (Space)" aria-label="Pause"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="3.5" height="10" rx="1"/><rect x="9.5" y="3" width="3.5" height="10" rx="1"/></svg></button>
         <button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
       </div>
       <button class="icon-btn only-narrow" id="btn-toggle-left" title="Pyramids" aria-label="Pyramids">△</button>
-      <button class="icon-btn only-narrow" id="btn-toggle-right" title="Your species" aria-label="Your species">●</button>
+      <button class="icon-btn only-narrow" id="btn-toggle-right" title="Steward panel" aria-label="Steward panel">●</button>
       <button class="icon-btn" data-menu title="Menu (Esc)" aria-label="Menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></button>
     </header>
 
@@ -44,20 +46,12 @@
       <div id="pyramid" class="pyramid"></div>
       <p class="pyr-note" id="pyr-note" hidden></p>
       <div class="cycles" id="cycles-strip" aria-live="polite"></div>
-      <p class="share-note" id="share-note"></p>
       <p class="sun-note" id="sun-note"></p>
       <div class="legend" id="level-legend"></div>
     </aside>
 
     <div class="map-cell" id="map-cell">
       <canvas id="world" aria-label="Ecosystem map"></canvas>
-      <div class="tint-card card" id="tint-card">
-        <div class="row between"><b>Variation tint</b><button class="switch" id="tint-toggle" role="switch" aria-checked="false" aria-label="Variation tint"><i></i></button></div>
-        <label class="caption" for="tint-gene">Gene</label>
-        <select id="tint-gene"></select>
-        <div class="tint-bar"></div>
-        <div class="row between caption mono" id="tint-scale"><span></span><span></span><span></span></div>
-      </div>
       <div class="zoom-btns"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button></div>
       <div id="inspector" class="inspector card" hidden aria-live="polite"></div>
       <div id="hint" class="hint card" hidden></div>
@@ -65,37 +59,17 @@
     </div>
 
     <aside class="side side-right" id="panel-right">
-      <div class="sp-head"><canvas id="pr-icon" width="44" height="44"></canvas><div><h3 class="h-serif" id="pr-name">Your species</h3><div class="caption" id="pr-sub">Your lineage</div></div></div>
-      <div class="stat-cards">
-        <div class="stat"><div class="eyebrow">Population</div><div class="mono big" id="pr-pop">0</div><div class="caption" id="pr-pop-sub"></div></div>
-        <div class="stat"><div class="eyebrow">Avg energy</div><div class="mono big" id="pr-energy">0%</div><div class="caption">starve below 20%</div></div>
-        <div class="stat"><div class="eyebrow">Births</div><div class="mono big" id="pr-births">0</div><div class="caption" id="pr-births-sub"></div></div>
-        <div class="stat"><div class="eyebrow">Deaths</div><div class="mono big" id="pr-deaths">0</div><div class="caption" id="pr-deaths-sub"></div></div>
-      </div>
-      <div class="caption">Body energy across the population</div>
-      <canvas id="pr-energy-strip" class="energy-strip" height="16"></canvas>
-      <div class="row between caption mono strip-labels"><span>0</span><span>20% starving</span><span>70% breeds</span></div>
-      <div class="row between rivals-head"><h3 class="h-serif">Rivals</h3><span class="caption" id="rivals-count"></span></div>
-      <ul id="rival-list" class="rival-list"></ul>
+      <div id="steward-panel"></div>
     </aside>
 
-    <footer class="dir-bar">
-      <div class="eyebrow">Directives</div>
-      <div id="directives" class="directives" role="toolbar" aria-label="Directives"></div>
-      <div class="bar-spacer"></div>
-      <button id="btn-marker" class="territory-btn" title="Place territory marker (T or right-click)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4M6 4h11l-3 4 3 4H6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-        <span><b>Territory</b><small id="marker-status">T · ready</small></span>
-      </button>
-      <button id="btn-clear-marker" class="icon-btn" title="Remove territory marker" aria-label="Remove territory marker" hidden>×</button>
-    </footer>
+    <footer class="dir-bar" id="action-bar"></footer>
   </section>
 
   <!-- ===== New world ===== -->
   <section id="screen-newworld" class="screen" hidden>
     <header class="bar">
       <div class="brand big-brand">Keystone</div>
-      <div class="caption tagline">Shape a lineage. Capture the flow.</div>
+      <div class="caption tagline">Steward the whole ecosystem. Keep the flow.</div>
       <div class="bar-spacer"></div>
       <div class="tabs" role="tablist" id="mode-tabs">
         <button role="tab" data-mode="meadow">Temperate Meadow</button>
@@ -129,134 +103,61 @@
           <div id="nw-web" class="food-web"></div>
         </div>
         <div class="card pad-l founder">
-          <h2 class="h-serif">Founder</h2>
-          <div class="seg3" role="tablist" id="founder-tabs">
-            <button data-ftab="templates">Templates</button><button data-ftab="roll">Roll a founder</button><button data-ftab="custom">Custom · 40 MP</button>
-          </div>
-          <div id="founder-body"></div>
+          <h2 class="h-serif">Stewardship</h2>
+          <div id="nw-scenario"></div>
           <div class="row between diff-row"><span class="caption">Difficulty</span><div class="seg-small" id="nw-difficulty"></div></div>
           <p class="caption" id="nw-diff-note"></p>
           <label class="row check-row"><input type="checkbox" id="nw-climate"> <span><b>Climate change</b> <span class="caption">CO₂ rises each round and the climate warms</span></span></label>
           <label class="row check-row"><input type="checkbox" id="nw-volcanic"> <span><b>Volcanic isle</b> <span class="caption">Start on bare rock: the whole run is primary succession</span></span></label>
-          <div class="row between"><button class="btn ghost" id="nw-reroll"></button><button class="btn primary" id="nw-begin">Begin run <span aria-hidden="true">→</span></button></div>
-          <div class="tpl-row-wrap"><div class="caption">Or start from a Phase 1 template</div><div class="tpl-row" id="nw-tpl-row"></div></div>
+          <div class="row between"><span></span><button class="btn primary" id="nw-begin">Begin as steward <span aria-hidden="true">→</span></button></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ===== Species editor · Evolve ===== -->
-  <section id="screen-evolve" class="screen" hidden>
-    <header class="bar">
-      <div class="brand">Keystone</div>
-      <div class="bar-sub"><b id="ev-round">Round 1</b> <span class="dim">of 30 · Evolve</span></div>
-      <button class="btn ghost small" data-open="phylogeny"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M3 5h5v6h5M8 8h5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Phylogeny</button>
-      <button class="btn ghost small" data-open="codex"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h8a2 2 0 0 1 2 2v9H5a2 2 0 0 1-2-2z M3 11.5a2 2 0 0 1 2-2h8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Codex</button>
-      <div class="bar-spacer"></div>
-      <div class="mp-pill"><span>Mutation Points</span><b class="mono" id="ev-mp-left">0</b><small id="ev-mp-sub">/ 0</small></div>
-      <button class="btn accent" id="ev-start">Start season <span aria-hidden="true">→</span></button>
-      <button class="icon-btn" data-menu aria-label="Menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></button>
-    </header>
-    <div class="ev-grid">
-      <div class="ev-left">
-        <div class="eyebrow" id="ev-gen"></div>
-        <input id="ev-name" class="name-input" maxlength="24" aria-label="Species name">
-        <div class="caption" id="ev-level"></div>
-        <div class="preview-box"><canvas id="ev-preview" width="560" height="360" aria-label="Creature preview at the population mean"></canvas></div>
-        <p class="caption">Drawn at the population mean. Individuals vary around it.</p>
-        <div class="chips" id="ev-plan"></div>
-        <div class="card meter-card">
-          <div class="row between"><h3 class="h-serif">Upkeep meter</h3><span class="status" id="ev-meter-status"></span></div>
-          <div id="ev-meter"></div>
-          <p class="caption" id="ev-meter-note">Band shows individual spread. The costliest 5% starve first in winter.</p>
-        </div>
-        <div id="ev-hint" class="hint-inline" hidden></div>
-      </div>
-      <div class="ev-center">
-        <div class="filters" id="ev-filters"></div>
-        <div class="caption legend-line"><i class="lg-mean"></i> mean <i class="lg-last"></i> last round <span>+ Guided mutation · <svg viewBox="0 0 16 16" class="pin-ico" aria-hidden="true"><path d="M6 2h4l-.5 4 2 2H4.5l2-2zM8 8v6" fill="none" stroke="currentColor" stroke-width="1.4"/></svg> pin = Selection pressure · μ = Mutation focus</span></div>
-        <div class="gene-grid" id="ev-genes"></div>
-      </div>
-      <div class="ev-right">
-        <h3 class="h-serif">Build profile</h3>
-        <canvas id="ev-radar" width="520" height="440" aria-label="Radar chart of build profile"></canvas>
-        <div class="caption radar-key"><i class="k-now"></i> Now <i class="k-was"></i> <span id="ev-radar-was">Last round</span></div>
-        <div class="eyebrow orders-title" id="ev-orders-title">This round's orders</div>
-        <div id="ev-orders" class="orders"></div>
-        <div id="ev-event" class="event-note" hidden></div>
-      </div>
-    </div>
-    <div class="mutant-tray">
-      <div class="mt-head"><h3 class="h-serif">Mutant tray</h3><p class="caption">Real outliers born last round, 30% off</p></div>
-      <div id="ev-mutants" class="mutants"></div>
-    </div>
-  </section>
-
-  <!-- ===== Selection report ===== -->
+  <!-- ===== Round report ===== -->
   <section id="screen-report" class="screen" hidden>
     <header class="bar">
       <div class="brand">Keystone</div>
-      <div class="bar-sub"><b id="rp-round">Round 1</b> <span class="dim">of 30 · Selection report</span></div>
+      <div class="bar-sub"><b id="rp-round">Round 1</b> <span class="dim">of 30 · Report</span></div>
       <div class="bar-spacer"></div>
       <div id="rp-chips" class="row gap"></div>
       <button class="icon-btn" data-menu aria-label="Menu"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></button>
     </header>
     <div class="screen-body">
       <div id="rp-outcome" class="outcome" hidden></div>
-      <div id="rp-speciation"></div>
       <div class="rp-grid">
+        <div class="card pad-l rp-ehi">
+          <div class="row between"><h2 class="h-serif">Ecosystem Health Index</h2><b class="mono huge" id="rp-ehi-total">—</b></div>
+          <div id="rp-ehi" class="ehi-list"></div>
+          <div id="rp-goals" class="goals"></div>
+        </div>
         <div class="card pad-l rp-sankey">
-          <div class="row between"><h2 class="h-serif">Where your energy went</h2><span class="caption" id="rp-sankey-note"></span></div>
+          <div class="row between"><h2 class="h-serif">Energy through the consumers</h2><span class="caption" id="rp-sankey-note"></span></div>
           <div id="rp-sankey" class="sankey"></div>
         </div>
         <div class="card pad-l rp-pops">
           <h2 class="h-serif">Populations this round</h2>
-          <p class="caption">Percent of each species at round start</p>
+          <p class="caption">Percent of each species at round start: the biggest movers</p>
           <canvas id="rp-popchart" width="520" height="300" aria-label="Population chart"></canvas>
           <ul id="rp-legend" class="pop-legend"></ul>
         </div>
-        <div class="card pad-l rp-evolved">
-          <div class="row between"><h2 class="h-serif">What evolved</h2><span class="caption">Mean shifts above 0.25 levels</span></div>
-          <ul id="rp-evo" class="evolved"></ul>
-        </div>
-        <div class="rp-small">
-          <div class="card pad"><h3 class="h-serif">Top causes of death</h3><div id="rp-deaths" class="bars"></div></div>
-          <div class="card pad"><h3 class="h-serif">Top energy sources</h3><div id="rp-sources" class="bars"></div></div>
+        <div class="card pad-l rp-demog">
+          <div class="row between"><h2 class="h-serif">Demography</h2><span class="caption">N1 = N0 + B + I − D − E · r = ((B + I) − (D + E)) ÷ N0</span></div>
+          <div id="rp-demog" class="demog-table"></div>
         </div>
         <div class="card pad-l rp-inter">
           <div class="row between"><h2 class="h-serif">Interactions and diversity</h2><span class="caption" id="rp-div"></span></div>
           <ul id="rp-inter" class="inter-list"></ul>
+          <ul id="rp-notes" class="inter-list"></ul>
           <div id="rp-keystone" class="keystone-box"></div>
         </div>
         <div class="card dark pad-l rp-mp">
-          <div class="row between"><h2 class="h-serif">Mutation Points</h2><b class="mono huge" id="rp-mp-total">0</b></div>
-          <table id="rp-mp" class="mp-table"></table>
-          <button class="btn light wide" id="rp-continue">Continue to Evolve <span aria-hidden="true">→</span></button>
+          <div class="row between"><h2 class="h-serif">Stewardship Points</h2><b class="mono huge" id="rp-sp-total">0</b></div>
+          <table id="rp-sp" class="mp-table"></table>
+          <button class="btn light wide" id="rp-continue">Plan next round <span aria-hidden="true">→</span></button>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- ===== Phylogeny ===== -->
-  <section id="screen-phylogeny" class="screen" hidden>
-    <header class="bar">
-      <div class="brand">Keystone</div>
-      <div class="bar-sub"><b>Phylogeny</b> <span class="dim" id="ph-sub"></span></div>
-      <div class="bar-spacer"></div>
-      <div class="caption" id="ph-stats"></div>
-      <button class="btn ghost small" data-close><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6"/></svg>Close</button>
-    </header>
-    <div class="ph-grid">
-      <div class="ph-main">
-        <div class="ph-legend caption">
-          <span><i class="lg-branch"></i> Branch width = population</span>
-          <span><i class="lg-you"></i> Your lineage (outlined)</span>
-          <span><i class="lg-desc"></i> Descendants · <b id="ph-desc-count">none yet</b></span>
-          <span><i class="lg-spec"></i> Speciation</span><span><i class="lg-ext"></i> Extinction</span><span><i class="lg-arr">+</i> Arrival</span>
-        </div>
-        <div id="ph-tree" class="ph-tree"></div>
-      </div>
-      <aside class="ph-side" id="ph-side"></aside>
     </div>
   </section>
 
@@ -266,7 +167,6 @@
       <div class="brand">Keystone</div>
       <div class="bar-sub"><b>Codex</b> <span class="dim" id="cx-sub"></span></div>
       <div class="bar-spacer"></div>
-      <button class="btn ghost small" data-open="phylogeny"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3v10M3 5h5v6h5M8 8h5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Phylogeny</button>
       <button class="btn ghost small" data-close><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6"/></svg>Close</button>
     </header>
     <div class="cx-grid">
@@ -282,7 +182,7 @@
       <h1 class="h-serif" id="end-title">Victory</h1>
       <p id="end-sub" class="lead"></p>
       <table id="end-score" class="score-table"></table>
-      <div class="row gap center"><button class="btn ghost" data-open="phylogeny">View phylogeny</button><button class="btn accent" id="end-new">New run</button></div>
+      <div class="row gap center"><button class="btn ghost" data-open="codex">Open the Codex</button><button class="btn accent" id="end-new">New run</button></div>
     </div>
   </section>
 
@@ -304,7 +204,7 @@
         <label class="btn ghost" for="file-import">Import save</label>
         <button class="btn ghost danger" id="menu-quit">Quit to New world</button>
       </div>
-      <p class="caption">The game autosaves at the start of every Evolve phase.</p>
+      <p class="caption">The game autosaves at the start of every Plan phase.</p>
       <details class="controls-help" id="menu-credits">
         <summary>Data sources</summary>
         <div id="credits-body" class="caption"></div>
@@ -315,8 +215,8 @@
           <tr><th>Pan</th><td>Drag or WASD</td><td>One-finger drag</td></tr>
           <tr><th>Zoom</th><td>Scroll wheel</td><td>Pinch</td></tr>
           <tr><th>Inspect</th><td>Left-click</td><td>Tap</td></tr>
-          <tr><th>Territory marker</th><td>Right-click or T</td><td>Long-press</td></tr>
-          <tr><th>Directives</th><td>1–6</td><td>Buttons</td></tr>
+          <tr><th>Place an action</th><td>Pick it, then click the map</td><td>Pick it, then tap</td></tr>
+          <tr><th>Cancel placing</th><td>Esc or right-click</td><td>Pick it again</td></tr>
           <tr><th>Pause</th><td>Space</td><td>Pause button</td></tr>
           <tr><th>Speed</th><td>+ / −</td><td>Speed buttons</td></tr>
         </table>
@@ -337,17 +237,18 @@
 <script src="js/succession.js"></script>
 <script src="js/interactions.js"></script>
 <script src="js/keystone.js"></script>
+<script src="js/steward.js"></script>
 <script src="js/energy.js"></script>
 <script src="js/scenarios.js"></script>
 <script src="js/catalog.js"></script>
 <script src="js/catalogs/index.js"></script>
-<script src="js/evolution.js"></script>
 <script src="js/generator.js"></script>
 <script src="js/sprites.js"></script>
 <script src="js/render.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/screens.js"></script>
+<script src="js/stewardui.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

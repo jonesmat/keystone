@@ -76,7 +76,7 @@ console.log('\nSexes and mating systems');
     w3._rebuildGrid();
     const alone = w3._canBreedHere(lone);
     const company = others.filter(o => o.alive && o.grow >= 1).slice(0, 3);
-    while (company.length < 3) company.push(w3.spawn(ex, 1, 1, lone.E, T.sampleGenome(ex.genome, w3.rng, B.founderSigma), { grow: 1 }));
+    while (company.length < 3) company.push(w3.spawn(ex, 1, 1, lone.E, ex.genome, { grow: 1 }));
     for (const e of company) { e.x = lone.x + 1; e.y = lone.y; }
     w3._rebuildGrid();
     check(!alone && w3._canBreedHere(lone), ex.name + ' (explosive) spawns only with others of its kind nearby');
@@ -128,7 +128,7 @@ console.log('\nTerritories');
   const w = world(T.Gen.hashSeed(7500, 1), { closed: true });
   const sp = w.species.find(s => s.flags.territorial && !s.grid);
   // Give the territorial species plenty of breeders to crowd the map.
-  for (let k = 0; k < 30; k++) { const p = w._randomLand(w.N / 2, w.N / 2, w.N / 2 - 2, sp.stats.swim); const e = w.spawn(sp, p[0], p[1], 0, T.sampleGenome(sp.genome, w.rng, B.founderSigma), { grow: 1 }); e.E = e.st.maxE; }
+  for (let k = 0; k < 30; k++) { const p = w._randomLand(w.N / 2, w.N / 2, w.N / 2 - 2, sp.stats.swim); const e = w.spawn(sp, p[0], p[1], 0, sp.genome, { grow: 1 }); e.E = e.st.maxE; }
   w.ledger.initial = w.totalPools(); w.nledger.initial = w.totalNitrogen();
   const females = w.ents.filter(e => e.sp === sp && e.sex === 'F');
   for (const e of females) w._canBreedHere(e);

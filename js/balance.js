@@ -3,7 +3,6 @@
 window.Trophic = window.Trophic || {};
 
 Trophic.BALANCE = {
-  version: 1,
 
   // World
   worldSize: 64,            // tiles per side
@@ -27,11 +26,7 @@ Trophic.BALANCE = {
   R_plant: 0.50,            // fallback for producers without their own resp trait
   leafFloor: 0.25,          // logistic regrowth: grazed-down plants capture less light
   nutrientStart: 0.75,
-  nutrientUse: 0.0004,      // nutrient drawn per EU stored
-  nutrientReturn: 0.004,    // nutrient returned per EU of detritus decomposed
   detritusDecay: 0.02,      // fraction of detritus respired by soil microbes per tick
-  nutrientBaseline: 0.55,   // soil weathering slowly pulls nutrients toward this
-  nutrientWeathering: 0.0005,
   grazeFloor: 0.12,         // grazers leave this fraction of a plant's max as rootstock
   fruitShare: 0.35,         // share of Bloomvine growth that becomes fruit in spring/summer
   fruitBonusA: 0.20,
@@ -75,45 +70,14 @@ Trophic.BALANCE = {
   carrionDecay: 0.01,       // per tick, into detritus
   decisionInterval: 5,      // ticks between utility-AI re-evaluations (0.5 s)
 
-  // Directives
-  directiveDuration: 150,
-  directiveCooldown: 300,
-  territoryRadius: 8,       // tiles
-
   // Round loop
-  mpBase: 5,
-  mpPerOffspring: 4,        // 1 MP per 4 offspring
-  mpEnergyDivisor: 5000,    // 1 MP per this many EU banked (GDD 500, rescaled for body-energy scale)
-  mpPerRival: 3,
-  mpCap: 25,
-  mpAdaptive: 3,
-  cardDiscount: 0.30,
-  rareCardChance: 0.05,
-  rerollCost: 2,
-  devolveRefund: 0.50,
   maxRounds: 30,
-  rivalDefeatFrac: 0.10,
-  rivalDefeatRounds: 2,
   collapseFrac: 0.15,
   collapseRounds: 2,
-  dominanceShare: 0.35,
-  apexShare: 0.50,
-  apexRounds: 3,
   eventStartRound: 4,
   eventChance: 0.25,
 
-  // Score
-  scoreEnergyDivisor: 100,  // score counts assimilated EU / 100
-  scorePerRival: 1000,
-  scoreVictory: 5000,
-  scorePerRound: 100,
-
-  // ---------- Phase 2: living genomes ----------
-  mutationRate: 0.15,       // μ: chance per gene per birth
-  mutationSigma: 0.04,      // σ as a fraction of the gene's range
-  markerRate: 0.35,         // neutral markers mutate more often, so relatedness is measurable
-  markerSigma: 0.08,
-  founderSigma: 0.06,       // starting populations sampled around the founder genome
+  // Breeding and bodies
   mateRadius: 4,            // tiles
   juvenileMass: 0.4,        // young are born at 40% of adult mass
   agingUpkeep: 0.02,        // +2% upkeep per round after maturity
@@ -121,27 +85,8 @@ Trophic.BALANCE = {
   densityShare: 0.15,       // above 15% of the entity budget, breeding gets harder
   densityStep: 0.05,        // +5 threshold points per extra 5% of the budget
   decomposerCap: 150,       // decomposers above this stop breeding (soil microbes carry the rest)
-  rescuePop: 10,            // below this, μ doubles (evolutionary rescue)
-  pressureThreshold: 0.60,  // Selection pressure: top 25% breed at this energy share
-  pressureCost: 2,          // MP per pinned gene (max 2)
-  focusCost: 3,             // MP per Mutation focus (max 2)
-  championCost: 2,
-  championShare: 1.2,       // a Champion's young take +20% of its EU
-  cullCooldown: 300,        // ticks
-  speciationMinPop: 16,
-  speciationMinCluster: 8,
-  speciationDistance: 0.55,   // GDD draft said 0.35; ordinary unimodal populations measure ~0.25–0.3
-  speciationHold: 2,        // rounds the gap must hold
-  speciationGeneScale: 0.1, // distance unit = 10% of each gene's range
-  speciesCap: 24,
-  producerMutation: 0.05,   // σ for producer tile genes when a tile reseeds from a neighbour
   preySwitchFrac: 0.2,
-  predatorGraceRounds: 2,   // NPC predators ignore the player's lineage in rounds 1–2 (tutorial introduces them in round 3)
   dominanceLimit: 0.6,      // stability test: no species above this share of consumer biomass (design draft said 40%)
-  rolledFounderMP: 5,
-  customFounderMP: 40,
-  descendantShare: 0.25,
-  whatEvolvedLevels: 0.25,  // report mean shifts above this many levels
 
   // ---------- Phase 3: textbook energy chain ----------
   // GPP -> plant respiration -> NPP -> harvesting -> assimilation -> metabolism -> tissue growth (NSP).
@@ -153,7 +98,6 @@ Trophic.BALANCE = {
     // sunMult is 3 in Game because only a third of NPP is edible (edibleDefault), so grazers see Phase 2's growth.
     realism: { id: 'realism', name: 'Realism', C_photo: 0.01, sunMult: 60, thermoScale: 3 },
   },
-  plantRespRange: [0.20, 0.75],  // share of GPP a producer respires (NPP efficiency 25–80%)
   edibleDefault: 0.33,      // share of NPP grown as grazeable leaf and fruit; the rest (stems, roots, wood) drops as litter
   litterRate: 0.0005,       // share of standing crop shed as litter per tick, so uneaten NPP feeds decomposers
   bodyTemp: 38,             // endotherm body temperature, °C
@@ -303,6 +247,22 @@ Trophic.BALANCE = {
     exclusionRounds: 3,
   },
 
+  // ---------- Phase 3: the steward (js/steward.js) ----------
+  steward: {
+    baseIncome: 12,         // SP granted every round
+    healthyBonus: 6,        // extra SP in a round that ends with EHI ≥ 70
+    harvestValue: 0.3,      // SP per harvested individual × √(body mass in kg); half value when the species is below ½K
+    harvestEvery: 100,      // ticks between harvest takes (a round's bag limit is spread over the season)
+    controlShare: 0.25,     // share of an invasive species removed per round under control
+    reintroduceGroup: 6, translocateGroup: 5,
+    exclosureRounds: 3, fenceMass: 2,   // fences keep out animals this size and up
+    wetlandRise: 0.08,      // restore wetland reaches ground this far above the water line
+    mvpIndividuals: 6, mvpPopulation: 40,   // minimum viable population: breeding adults, or Population individuals
+    interiorMin: 0.3,       // interior share of woodland below which the Habitat component falls
+    collapseEHI: 30, winEHI: 70,
+    scoreRecovered: 40, scoreReintroduced: 40, scoreExtinction: 40,
+  },
+
   // ---------- Phase 3: automatic keystone tests (js/keystone.js) ----------
   keystone: {
     rounds: 3,              // rounds each forked copy runs
@@ -341,8 +301,8 @@ Trophic.BALANCE = {
   plantFullAt: 0.5,         // a tile holds its full count of plants once standing crop reaches this share of max
 
   difficulties: {
-    seedling: { name: 'Seedling', npcMu: 0.7, response: 0.5, startMP: 25, scoreMult: 0.75 },
-    standard: { name: 'Standard', npcMu: 1.0, response: 1.0, startMP: 20, scoreMult: 1.0 },
-    apex:     { name: 'Apex',     npcMu: 1.4, response: 1.5, startMP: 15, scoreMult: 1.5 },
+    seedling: { name: 'Seedling', startSP: 60, income: 1.25, scoreMult: 0.75 },
+    standard: { name: 'Standard', startSP: 40, income: 1.0, scoreMult: 1.0 },
+    apex:     { name: 'Apex',     startSP: 25, income: 0.8, scoreMult: 1.5 },
   },
 };

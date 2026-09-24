@@ -170,7 +170,7 @@ window.Trophic = window.Trophic || {};
       // Light gaps: shrubs and trees die at the end of their longevity.
       if (Pr && s >= 3 && this.sAge[i] > Pr.longevity) { this._reset(i, 'gap'); changed++; continue; }
       // Bare soil (burned, flooded, cleared) regrows from the seed bank at once.
-      if (!Pr && !this.rock[i]) { if (this._regrow(i)) changed++; continue; }
+      if (!Pr && !this.rock[i]) { if (!(this.bareHold && this.bareHold[i]) && this._regrow(i)) changed++; continue; }
       const climax = this.climaxAt(i);
       if (s >= climax) continue;
       // The next stage present in the world (stages the roster lacks are skipped).
@@ -335,7 +335,7 @@ window.Trophic = window.Trophic || {};
 
   // Natural disturbance each round (on the weather stream): lightning fires, more likely in dry, grassy biomes.
   W._successionBeginRound = function () {
-    if (!this.som) return;
+    if (!this.som || this.loading) return;
     for (let i = 0; i < this.N * this.N; i++) if (this.burn[i]) this.burn[i]--;
     if (this.round <= 1 || !S().natural) return;
     const P = S(), c = this.biomeClass.id;

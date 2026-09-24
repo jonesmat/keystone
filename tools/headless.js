@@ -1,30 +1,24 @@
 // Headless sim runner for tuning.
-//   node tools/headless.js [template|roll:<archetype>|none] [rounds] [seed] [meadow|generated]
-// Env: DEATHS=1 prints deaths per species, EVO=1 prints what evolved and cluster distances.
+//   node tools/headless.js [rounds] [seed] [meadow|generated]
+// Env: DEATHS=1 prints deaths per species.
 const T = require('./load.js');
 const B = T.BALANCE;
 
-const who = process.argv[2] || 'grazer';
-const rounds = +(process.argv[3] || 5);
-const seed = +(process.argv[4] || 12345);
-const mode = process.argv[5] || 'meadow';
+const rounds = +(process.argv[2] || 5);
+const seed = +(process.argv[3] || 12345);
+const mode = process.argv[4] || 'meadow';
 
-let roster, attempt = 1;
+let roster;
 if (mode === 'generated') {
   const t0 = Date.now();
   const r = T.Gen.generateStable(seed, 'meadow', 20);
-  roster = r.roster; attempt = r.attempt;
+  roster = r.roster;
   console.log('generated roster in', ((Date.now() - t0) / 1000).toFixed(1) + 's, attempt', r.attempt, r.pass ? 'PASS' : 'FALLBACK', '-', r.reason);
   console.log('  producers:', roster.producers.map(p => p.name + '(' + p.kind + ')').join(', '));
   console.log('  consumers:', roster.species.map(s => s.name + '[' + s.level + ', m' + s.genome[T.G.size].toFixed(1) + ', eats ' + s.eats.join('/') + ']').join('\n             '));
 } else roster = T.Gen.meadowRoster();
 
-let player = null;
-if (who.startsWith('roll:')) player = T.Gen.rollFounder(who.slice(5), seed);
-else if (who !== 'none') player = T.Gen.templateFounder(T.TEMPLATES.find(t => t.id === who));
-if (player) player.name = player.name || 'Player';
-
-const w = T.createWorld({ seed, roster, player, difficulty: B.difficulties.standard });
+const w = T.createWorld({ seed, roster });
 const short = s => s.name.slice(0, 8).padStart(8);
 const header = () => console.log('round ' + w.species.map(short).join(' ') + '   prodEU  ledgerErr  ms/tick');
 header();
@@ -46,12 +40,6 @@ for (let r = 1; r <= rounds; r++) {
     const rs = w.rstats[sp.idx];
     console.log('   ', sp.name.padEnd(14), 'births', rs.births, 'deaths', JSON.stringify(rs.deaths));
   }
-  if (process.env.EVO) {
-    for (const x of T.Evo.whatEvolved(w)) console.log('    evolved:', x.species, x.gene, (x.delta > 0 ? '+' : '') + x.delta.toFixed(2), '—', x.cause);
-  }
-  const evs = T.Evo.checkSpeciation(w, r);
-  if (process.env.EVO) console.log('    cluster dist:', w.species.filter(s => s.lastClusterDist).map(s => s.name.slice(0, 8) + '=' + s.lastClusterDist.toFixed(2)).join(' '));
-  for (const e of evs) console.log('    SPECIATION: ' + e.parent.name + ' -> ' + e.child.name + ' (' + e.nChild + ' split off, distance ' + e.dist.toFixed(2) + ')');
   for (const n of w.notes.splice(0)) console.log('    note:', n);
   w.beginRound(r + 1);
   if (w.species.length !== nSpecies) { nSpecies = w.species.length; header(); }

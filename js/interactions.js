@@ -410,7 +410,7 @@ window.Trophic = window.Trophic || {};
   };
 
   W._interactionsBeginRound = function () {
-    if (this.round > 1) this._monoculturePests();
+    if (this.round > 1 && !this.loading) this._monoculturePests();
     this.edgeDirty = true;
   };
 

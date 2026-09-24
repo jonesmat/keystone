@@ -10,6 +10,8 @@
 //   strata      animals: the foraging layers allowed (EltonTraits: canopy, midstory, understory, ground, water, air)
 //   need        extra constraints on the draw as a whole, e.g. { fixer: 1 } for at least one nitrogen-fixer
 //   interior    animals: interior-woodland specialists, which breed only 3 or more tiles from open ground
+// A scenario's `damage` sets the conditions the steward inherits and `goals` the restoration targets for round 30
+// (see T.Steward.setupScenario and T.Steward.goals).
 //   domestic    a domestic species the slot always holds (cattle), since occurrence data rarely records livestock
 window.Trophic = window.Trophic || {};
 
@@ -42,6 +44,15 @@ window.Trophic = window.Trophic || {};
       id: 'rewilding', name: 'Rewilding the ranch', ecoregion: '9.3', place: 'northeastern Montana',
       start: 'A cattle ranch stocked above K for decades: compacted soil, non-native forage grass monocultures, cattle as nearly the only large herbivore, native grazers and predators gone.',
       goal: 'Phase cattle down, restore native grass cover above 60%, bring back native grazers and then an apex predator.',
+      damage: { compaction: 0.6, overstock: { slot: 'livestock', factor: 2.5 } },
+      goals: [
+        { type: 'reduce', slot: 'livestock', max: 0.25, text: 'Phase cattle down to a quarter of the starting herd' },
+        { type: 'compaction', max: 0.2, text: 'Loosen compacted soil (mean compaction ≤ 20%)' },
+        { type: 'nativeCover', min: 0.6, text: 'Native plant cover above 60%' },
+        { type: 'present', slot: 'grazers', text: 'A native grazer re-established' },
+        { type: 'present', slot: 'apex', text: 'An apex predator re-established' },
+        { type: 'levels', min: 4, text: '4 or more trophic levels' },
+      ],
       slots: [
         { id: 'forage', role: 'grass', count: [1, 2], native: false, startShare: 'dominant' },
         { id: 'natives', role: 'grass', count: [3, 6], native: true, start: 'seedbank' },
@@ -64,11 +75,21 @@ window.Trophic = window.Trophic || {};
     {
       id: 'oldfield', name: 'Old-field restoration', ecoregion: '9.2', place: 'Iowa and Illinois prairie',
       start: 'Abandoned cropland, mostly bare with a seed bank.', goal: 'A tallgrass prairie climax with 4 or more trophic levels.',
+      damage: { bare: 0.8 },
+      goals: [
+        { type: 'climax', min: 0.7, text: 'Native prairie (or later stages) on 70% of the land' },
+        { type: 'levels', min: 4, text: '4 or more trophic levels' },
+      ],
       slots: CORE.concat([{ role: 'grass', count: [1, 2], native: false }, { role: 'amphibian', count: [1, 2] }]),
     },
     {
       id: 'predator', name: 'Predator return', ecoregion: '6.2', place: 'Greater Yellowstone',
       start: 'Streamside willow and aspen overbrowsed by abundant elk, with no apex predator.', goal: 'Reintroduce an apex predator and see a trophic cascade restore the producers.',
+      damage: { overbrowsed: 0.8, overstock: { slot: 'large grazer', factor: 2 } },
+      goals: [
+        { type: 'present', slot: 'apex predator', text: 'An apex predator re-established' },
+        { type: 'woody', min: 1.3, text: 'Shrub and tree cover 30% above the start (the trophic cascade)' },
+      ],
       slots: CORE.concat([
         { role: 'tree', count: [2, 4], native: true }, { role: 'shrub', count: [2, 3], native: true },
         { role: 'large grazer', count: [2, 3], native: true }, { role: 'apex predator', count: [1, 1], start: 'pool' },
@@ -78,12 +99,21 @@ window.Trophic = window.Trophic || {};
     {
       id: 'invasive', name: 'Invasive outbreak', ecoregion: '15.4', place: 'Everglades',
       start: 'A generalist invader drawn from the catalog\'s non-native species, spreading from one corner.', goal: 'Hold native richness at baseline while the invader declines.',
+      damage: { corner: 'invader' },
+      goals: [
+        { type: 'nativeRichness', min: 1, text: 'Native animal richness at or above the start' },
+        { type: 'reduce', slot: 'invader', max: 0.5, text: 'The invader below half its starting numbers' },
+      ],
       slots: CORE.concat([{ role: 'waterbird', count: [3, 6] }, { role: 'reptile', count: [2, 4] }, { role: 'fish', count: [2, 4] },
         { id: 'invader', role: 'any animal', count: [1, 1], native: false, invader: true }]),
     },
     {
       id: 'songbird', name: 'Endangered songbird', ecoregion: '9.4.6', place: 'Edwards Plateau, Texas Hill Country',
       start: 'A fragmented juniper–oak woodland with an endangered interior-nesting songbird and a nest parasite.', goal: 'Grow the songbird to a self-sustaining population.',
+      damage: { fragment: 3 },
+      goals: [
+        { type: 'grow', slot: 'atRisk', min: 2, atLeast: 20, text: 'The endangered songbird at twice its starting numbers (and at least 20)' },
+      ],
       // The Edwards Plateau (Level III 9.4.6) catalog is a rich one (about 500 species), so this world draws a full
       // juniper–oak woodland community: 60–110 species, most of them plants and small taxa.
       slots: [
@@ -112,11 +142,21 @@ window.Trophic = window.Trophic || {};
     {
       id: 'aquifer', name: 'Dry plains aquifer', ecoregion: '9.4', place: 'High Plains over the Ogallala Aquifer',
       start: 'Irrigated prairie over a falling water table, with compacted, nitrate-leaching fields.', goal: 'Bring withdrawal down to recharge and stop nitrate runoff.',
+      damage: { compaction: 0.4, irrigation: 0.6, aquiferStart: 0.7 },
+      goals: [
+        { type: 'aquifer', text: 'The water table back at or above the start' },
+        { type: 'leaching', text: 'Nitrogen lost no faster than it is fixed' },
+      ],
       slots: CORE.concat([{ role: 'large grazer', count: [1, 2], native: true }]),
     },
     {
       id: 'warming', name: 'Warming world', ecoregion: '8.4', place: 'Central Appalachians',
       start: 'A temperate hardwood forest under rising CO₂ and a climate envelope moving north.', goal: 'Keep forest cover and richness at 80% of baseline and the map a net carbon sink.',
+      goals: [
+        { type: 'forest', min: 0.8, text: 'Forest cover at 80% of the start or more' },
+        { type: 'richness', min: 0.8, text: 'Species richness at 80% of the start or more' },
+        { type: 'sink', text: 'The map a net carbon sink' },
+      ],
       slots: CORE.concat([{ role: 'tree', count: [3, 5], native: true }, { role: 'shrub', count: [1, 3], native: true },
         { role: 'large grazer', count: [1, 1], native: true }, { role: 'amphibian', count: [2, 3] }]),
       climateTrend: true,

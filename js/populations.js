@@ -14,7 +14,7 @@ window.Trophic = window.Trophic || {};
   const clamp = T.util.clamp;
   const PB = () => B.populations;
 
-  T.isPopulationSpecies = sp => !!(sp && sp.flags && sp.flags.population && !sp.isPlayer);
+  T.isPopulationSpecies = sp => !!(sp && sp.flags && sp.flags.population);
 
   // ---------- setup ----------
 

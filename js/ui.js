@@ -64,7 +64,6 @@ window.Trophic = window.Trophic || {};
 
   UI.init = function (game) {
     G = game;
-    UI.buildDirectives();
     UI.buildLegend();
     document.querySelectorAll('#screen-world .speed button').forEach(b => b.addEventListener('click', () => G.setSpeed(+b.dataset.speed)));
     document.querySelectorAll('[data-menu]').forEach(b => b.addEventListener('click', () => G.openMenu()));
@@ -79,20 +78,8 @@ window.Trophic = window.Trophic || {};
     });
     $('btn-toggle-left').addEventListener('click', () => { $('panel-left').classList.toggle('open'); $('panel-right').classList.remove('open'); });
     $('btn-toggle-right').addEventListener('click', () => { $('panel-right').classList.toggle('open'); $('panel-left').classList.remove('open'); });
-    $('btn-marker').addEventListener('click', () => G.togglePlacing());
-    $('btn-clear-marker').addEventListener('click', () => G.clearMarker());
     $('zoom-in').addEventListener('click', () => { const r = G.renderer; r.zoomAt(r.w / 2, r.h / 2, 1.3); });
     $('zoom-out').addEventListener('click', () => { const r = G.renderer; r.zoomAt(r.w / 2, r.h / 2, 1 / 1.3); });
-    const sel = $('tint-gene');
-    for (const k of ['speed', 'size', 'bite', 'senses', 'camo', 'armor', 'boldness', 'aggression', 'plantGut', 'meatGut', 'diet', 'fat']) sel.append(el('option', { value: k, text: T.GENE_BY_KEY[k].name }));
-    sel.addEventListener('change', () => { G.renderer.tint.gene = sel.value; UI.updateTint(); });
-    $('tint-toggle').addEventListener('click', () => {
-      const on = !G.renderer.tint.on;
-      G.renderer.tint.on = on;
-      $('tint-toggle').setAttribute('aria-checked', String(on));
-      $('tint-card').classList.toggle('on', on);
-      UI.updateTint();
-    });
     // menu
     $('menu-resume').addEventListener('click', () => G.closeMenu());
     $('menu-export').addEventListener('click', () => G.exportSave());
@@ -113,7 +100,7 @@ window.Trophic = window.Trophic || {};
   };
 
   UI.show = function (name) {
-    for (const s of ['world', 'newworld', 'evolve', 'report', 'phylogeny', 'codex', 'end']) $('screen-' + s).hidden = s !== name;
+    for (const s of ['world', 'newworld', 'report', 'codex', 'end']) $('screen-' + s).hidden = s !== name;
     if (name !== 'world') { $('inspector').hidden = true; }
   };
 
@@ -133,27 +120,7 @@ window.Trophic = window.Trophic || {};
   };
   UI.hideHint = () => ($('hint').hidden = true);
 
-  // ---------- directives + legend ----------
-
-  const ICONS = {
-    forage: '<path d="M12 21c0-7 0-11 7-15-1 7-3 11-7 11M12 21c0-5-1-8-6-10 0 5 2 8 6 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
-    hunt: '<path d="M4 7l4 10 4-6 4 6 4-10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
-    hide: '<path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 20 20 4" stroke="currentColor" stroke-width="1.8"/>',
-    migrate: '<path d="M5 8h10l-3-3M19 16H9l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
-    swarm: '<circle cx="12" cy="7" r="2.3" fill="currentColor"/><circle cx="7" cy="15" r="2.3" fill="currentColor"/><circle cx="17" cy="15" r="2.3" fill="currentColor"/>',
-    isolate: '<circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 2.4"/><circle cx="12" cy="12" r="2.4" fill="currentColor"/>',
-  };
-
-  UI.buildDirectives = function () {
-    const box = $('directives');
-    box.innerHTML = '';
-    for (const d of T.DIRECTIVES) {
-      const b = el('button', { class: 'dir-btn', 'data-dir': d.id, title: d.name + ' (' + d.key + '): ' + d.desc, onclick: () => G.issueDirective(d.id) });
-      b.innerHTML = '<span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICONS[d.id] + '</svg></span>';
-      b.append(el('span', { class: 'txt' }, el('b', { text: d.name }), el('small', null, el('kbd', { text: d.key }), el('span', { class: 'st' }))));
-      box.append(b);
-    }
-  };
+  // ---------- legend ----------
 
   UI.buildLegend = function () {
     const box = $('level-legend');
@@ -165,11 +132,13 @@ window.Trophic = window.Trophic || {};
   // ---------- HUD ----------
 
   UI.updateHUD = function () {
-    const w = G.world, run = G.run, p = w.player;
-    if (!p) return;
-    $('tb-biome').textContent = run.mode === 'generated' ? 'Generated · ' + B.biomes[run.biome].name : run.mode === 'channel' ? 'Open Channel' : run.mode === 'catalog' ? run.worldName : 'Temperate Meadow';
+    const w = G.world, run = G.run;
+    if (!w || !run) return;
+    $('tb-biome').textContent = run.worldName;
     $('tb-round').textContent = 'Round ' + run.round;
-    $('tb-of').textContent = 'of ' + B.maxRounds + ' · Simulate';
+    $('tb-of').textContent = 'of ' + B.maxRounds + ' · ' + (G.state === 'plan' ? 'Plan' : 'Season');
+    $('tb-sp').textContent = Math.round(run.sp);
+    $('tb-ehi').textContent = run.ehiHistory.length ? run.ehi.total : '—';
     // season bar
     const sb = $('tb-season');
     if (!sb.children.length) sb.append(el('div', { class: 'labels' }), el('div', { class: 'segs' }, el('i'), el('i'), el('i'), el('i')));
@@ -190,15 +159,10 @@ window.Trophic = window.Trophic || {};
     else chip.hidden = true;
     const left = Math.max(0, B.roundTicks - w.roundTick) / B.ticksPerSecond;
     $('tb-timer').textContent = pad2(Math.floor(left / 60)) + ':' + pad2(Math.floor(left % 60));
-    document.querySelectorAll('#screen-world .speed button').forEach(b => b.classList.toggle('on', +b.dataset.speed === (G.paused ? 0 : G.speed)));
+    document.querySelectorAll('#screen-world .speed button').forEach(b => { b.classList.toggle('on', +b.dataset.speed === (G.paused ? 0 : G.speed)); b.disabled = G.state === 'plan'; });
 
     UI.updatePyramid();
-    UI.updateRightPanel();
-    UI.updateDirectives();
-    UI.updateTint();
-    $('btn-clear-marker').hidden = !w.marker;
-    $('btn-marker').classList.toggle('placing', !!G.placing);
-    $('marker-status').textContent = G.placing ? 'click the map' : w.marker ? 'T · placed' : 'T · ready';
+    UI.renderStewardPanel();
 
     const dbg = $('debug-overlay');
     dbg.hidden = !G.settings.debug;
@@ -219,7 +183,7 @@ window.Trophic = window.Trophic || {};
     energy: 'Energy fixed at each level this round',
   };
   UI.updatePyramid = function () {
-    const w = G.world, p = w.player;
+    const w = G.world;
     const box = $('pyramid');
     const now = performance.now();
     if (box.children.length && now - UI.pyrAt < 500) return;   // recount twice a second, not every frame
@@ -230,7 +194,7 @@ window.Trophic = window.Trophic || {};
         const L = levels[k];
         box.append(el('div', { class: 'pyr-row', 'data-k': k },
           el('div', { class: 'pyr-label' }, el('span', { text: L.name }), el('span', null, el('b'), el('em'))),
-          el('div', { class: 'pyr-bar', style: { background: T.LEVELS[L.key].color } }, el('i', { class: 'you' }))));
+          el('div', { class: 'pyr-bar', style: { background: T.LEVELS[L.key].color } })));
       }
     }
     const kind = UI.pyrKind;
@@ -239,31 +203,13 @@ window.Trophic = window.Trophic || {};
     const pd = T.Energy.pyramids(w);
     const vals = pd[kind];
     const logMax = Math.log10(1 + Math.max(1, ...vals));
-    // The player's share of their row: individuals, standing crop, or energy assimilated this round.
-    const pk = levels.findIndex(L => L.levels.includes(p.level));
-    let mine = 0;
-    if (kind === 'energy') {
-      let rowAs = 0;
-      w.species.forEach((sp, i) => { if (levels[pk].levels.includes(sp.level)) rowAs += w.rstats[i].assimilated; });
-      mine = rowAs > 0 ? w.rstats[p.idx].assimilated / rowAs : 0;
-    } else {
-      let n = 0, b = 0, rn = 0, rb = 0;
-      for (const e of w.ents) {
-        if (!e.alive || !levels[pk].levels.includes(e.sp.level)) continue;
-        rn++; rb += e.E + e.tissue;
-        if (e.sp === p) { n++; b += e.E + e.tissue; }
-      }
-      mine = kind === 'numbers' ? (rn ? n / rn : 0) : rb ? b / rb : 0;
-    }
     for (const row of box.children) {
       const k = +row.dataset.k, v = vals[k];
       row.querySelector('.pyr-bar').style.width = (v > 0 ? 6 + 94 * (Math.log10(1 + v) / logMax) : 0) + '%';
-      row.querySelector('.you').style.width = (k === pk ? mine * 100 : 0) + '%';
       const text = kind === 'biomass' ? (v >= 10 ? fmt(v) : v.toFixed(v >= 1 ? 1 : 2)) + ' g/m²' : kind === 'energy' ? fmt(v) + ' EU' : v >= 10 ? fmt(v) : v.toFixed(v > 0 ? 2 : 0);
       row.querySelector('b').textContent = text;
       // Energy: the share passed up from the level below (the 10% rule).
       row.querySelector('em').textContent = kind === 'energy' && k > 0 && vals[k - 1] > 0 && v > 0 ? '▲ ' + (v / vals[k - 1] >= 0.01 ? pct(v / vals[k - 1]) : '<1%') : '';
-      row.classList.toggle('player', k === pk);
     }
     const note = kind === 'energy'
       ? (pd.violations.length ? 'Energy failed to narrow at ' + pd.violations.map(k => levels[k].name.toLowerCase()).join(', ') + ' this round.' : null)
@@ -271,9 +217,6 @@ window.Trophic = window.Trophic || {};
     $('pyr-note').hidden = !note;
     $('pyr-note').textContent = note || '';
     UI.updateCycles();
-    const pyr = w.pyramid();
-    const share = pyr.levels[p.level] > 0 ? pyr.player[p.level] / pyr.levels[p.level] : 0;
-    $('share-note').textContent = 'Your share of ' + T.LEVELS[p.level].name.toLowerCase() + ': ' + pct(share) + ' (need ' + pct(B.dominanceShare) + ')';
     $('sun-note').textContent = 'Sunlight captured this tick: ' + fmt(w.capturedTick) + ' EU';
   };
 
@@ -375,113 +318,6 @@ window.Trophic = window.Trophic || {};
     UI.placeInspector(((r.tiles[0] % w.N) + 0.5), (((r.tiles[0] / w.N) | 0) + 0.5));
   };
 
-  UI.updateRightPanel = function () {
-    const w = G.world, run = G.run, p = w.player;
-    $('pr-name').textContent = p.name;
-    $('pr-sub').textContent = 'Your lineage · ' + T.LEVELS[p.level].short.toLowerCase();
-    const ic = $('pr-icon');
-    if (ic.dataset.key !== p.spriteKey) {
-      ic.dataset.key = p.spriteKey;
-      const { ctx } = hiDPI(ic, 44, 44);
-      ctx.clearRect(0, 0, 44, 44);
-      ctx.fillStyle = T.speciesColor(p.level, p.hue, 0.6);
-      ctx.beginPath(); ctx.arc(22, 22, 21, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = T.speciesColor(p.level, p.hue, 0); ctx.strokeStyle = INK; ctx.lineWidth = 1.5;
-      T.iconPath(ctx, T.LEVELS[p.level].shape, 22, 23, 9); ctx.fill(); ctx.stroke();
-    }
-    let n = 0, e = 0, juv = 0;
-    const fr = [];
-    for (const x of w.ents) if (x.alive && x.sp === p) { n++; const f = x.E / x.st.maxE; e += f; fr.push(f); if (x.grow < 1) juv++; }
-    const rs = w.rstats[p.idx];
-    let deaths = 0, eaten = 0, starved = 0;
-    for (const k in rs.deaths) { deaths += rs.deaths[k]; if (k.startsWith('k:')) eaten += rs.deaths[k]; if (k.startsWith('starved')) starved += rs.deaths[k]; }
-    $('pr-pop').textContent = n;
-    $('pr-pop-sub').textContent = 'started round at ' + rs.startPop;
-    $('pr-energy').textContent = n ? pct(e / n) : '—';
-    $('pr-energy').style.color = n && e / n < 0.25 ? 'var(--bad)' : '';
-    $('pr-births').textContent = rs.births;
-    $('pr-births-sub').textContent = juv + ' still juvenile';
-    $('pr-deaths').textContent = deaths;
-    $('pr-deaths-sub').textContent = eaten + ' eaten · ' + starved + ' starved';
-    UI.drawEnergyStrip($('pr-energy-strip'), fr);
-    UI.renderRivals($('rival-list'), true);
-  };
-
-  UI.drawEnergyStrip = function (cv, fracs) {
-    const { ctx, W, H } = hiDPI(cv, cv.clientWidth || 240, 16);
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#E7E0CD'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(201,72,63,0.12)'; ctx.fillRect(0, 0, W * B.starvationThreshold, H);
-    const bins = new Array(25).fill(0);
-    for (const f of fracs) bins[Math.min(24, Math.floor(f * 25))]++;
-    const mx = Math.max(1, ...bins);
-    bins.forEach((b, k) => {
-      if (!b) return;
-      const h = 3 + (H - 4) * (b / mx);
-      ctx.fillStyle = ACCENT;
-      ctx.fillRect((k / 25) * W + 1, H - h, W / 25 - 2, h);
-    });
-    ctx.fillStyle = INK;
-    ctx.fillRect(W * B.starvationThreshold, 0, 1.5, H);
-    ctx.fillRect(W * B.breedingThreshold, 0, 1.5, H);
-  };
-
-  UI.renderRivals = function (ul, live) {
-    const run = G.run, w = G.world;
-    ul.innerHTML = '';
-    const pops = w.countPops().count;
-    const def = run.rivals.filter(r => r.defeated).length;
-    if (live) $('rivals-count').textContent = def + ' of ' + run.rivals.length + ' defeated';
-    if (!run.rivals.length) { ul.append(el('li', { class: 'caption', text: 'No rivals share your niche.' })); return; }
-    for (const r of run.rivals) {
-      const sp = w.speciesById(r.id);
-      const n = sp ? pops[sp.idx] : 0;
-      const frac = n / Math.max(1, r.startPop);
-      const low = !r.defeated && frac < B.rivalDefeatFrac;
-      const preys = sp && w.player && w.edible[sp.idx][w.player.idx];
-      let val, sub;
-      if (r.defeated) { val = 'defeated'; sub = 'round ' + r.defeatedRound; }
-      else if (preys && r.startPop <= 6) { val = n + ' of ' + r.startPop; sub = 'preys on you'; }
-      else { val = pct(frac); sub = low ? (r.low + 1 === 1 ? '1st' : '2nd') + ' round < 10%' : 'of start'; }
-      ul.append(el('li', { class: r.defeated ? 'defeated' : low ? 'warn' : '', title: r.why },
-        sp ? shapeIcon(sp.level, sp.hue) : el('i'), el('span', { class: 'nm', text: r.name }),
-        el('span', { class: 'val' }, val, el('small', { text: sub })),
-        !live ? el('span', { class: 'why', text: r.why }) : null));
-    }
-  };
-
-  UI.updateDirectives = function () {
-    const w = G.world;
-    const active = w.activeDirective();
-    document.querySelectorAll('#directives .dir-btn').forEach(b => {
-      const id = b.dataset.dir;
-      const ready = w.directiveReady[id] || 0;
-      const cooling = w.t < ready && active !== id;
-      b.classList.toggle('active', active === id);
-      const noMeat = id === 'hunt' && !w.player.stats.canMeat;
-      b.disabled = noMeat;
-      let p = 0, st = '';
-      if (active === id) { p = 100 * (1 - (w.directive.until - w.t) / B.directiveDuration); st = 'Active'; }
-      else if (cooling) { p = 100 * ((ready - w.t) / B.directiveCooldown); st = Math.ceil((ready - w.t) / B.ticksPerSecond) + ' s'; }
-      if (id === 'isolate' && !cooling && w.isoCounter) st = 'set';
-      b.querySelector('.ico').style.setProperty('--p', p + '%');
-      b.querySelector('.st').textContent = st;
-    });
-  };
-
-  UI.updateTint = function () {
-    const w = G.world, p = w && w.player;
-    if (!p) return;
-    const gi = T.G[G.renderer.tint.gene];
-    let lo = Infinity, hi = -Infinity;
-    for (const e of w.ents) if (e.alive && e.sp === p) { lo = Math.min(lo, e.g[gi]); hi = Math.max(hi, e.g[gi]); }
-    const spans = $('tint-scale').children;
-    if (lo === Infinity) { spans[0].textContent = spans[1].textContent = spans[2].textContent = ''; return; }
-    spans[0].textContent = lo.toFixed(2) + ' low';
-    spans[1].textContent = 'mean ' + p.mean[gi].toFixed(2);
-    spans[2].textContent = 'high ' + hi.toFixed(2);
-  };
-
   // ---------- inspector ----------
 
   const STATE_TEXT = {
@@ -490,21 +326,26 @@ window.Trophic = window.Trophic || {};
     fight: e => 'Charging ' + (e.te ? e.te.sp.name : 'an attacker'),
     flee: e => 'Fleeing ' + (e.threat ? e.threat.sp.name : 'danger'),
     scavenge: e => 'Eating ' + (e.tc && e.tc.src ? e.tc.src + ' carcass' : 'carrion'),
-    wander: e => (e.sp.isPlayer && G.world.marker ? 'Roaming its territory' : 'Wandering'),
+    wander: () => 'Wandering', follow: e => 'Following ' + (e.te ? e.te.sp.name : 'its host'), clean: e => 'Cleaning ' + (e.te ? e.te.sp.name : 'a host'),
     seek: () => 'Looking for a mate', migrate: () => 'Migrating', swarm: () => 'Swarming to the marker', hide: () => 'Hiding', rest: () => 'Resting',
   };
 
-  function inspectorGenes(sp) {
-    const keys = ['speed', sp.stats.canMeat ? 'bite' : 'plantGut', 'senses', sp.stats.canMeat ? 'meatGut' : 'camo', 'boldness', 'aggression'];
-    for (const k of ['armor', 'spines', 'venom', 'burrow', 'camo']) if (keys.length < 7 && !keys.includes(k) && sp.mean[T.G[k]] > 0.3) keys.push(k);
-    return keys;
+  // A species' fixed trait sheet (Phase 3): real values where the catalog has them, else the game's.
+  function traitSheet(sp) {
+    const st = sp.stats, m = sp.meta;
+    const diet = st.meat >= 0.7 ? 'mostly meat' : st.meat <= 0.3 ? 'mostly plants' : 'plants and animals';
+    const rows = [['Body mass', m && m.massKg ? (m.massKg >= 1 ? m.massKg.toFixed(m.massKg >= 10 ? 0 : 1) + ' kg' : Math.round(m.massKg * 1000) + ' g') : 'size ' + st.mass.toFixed(1)],
+      ['Diet', diet], ['Metabolism', st.ecto ? 'ectotherm' : 'endotherm'], ['Lifespan', (st.lifeTicks / B.roundTicks).toFixed(1) + ' rounds'],
+      ['Litter', String(st.litter)], ['Speed · senses', (st.speed * 10).toFixed(1) + ' · ' + st.sight.toFixed(0) + ' tiles']];
+    if (m && m.sci) rows.unshift(['Species', m.sci + (m.native === false ? ' · non-native' : '') + (m.iucn && !['LC', 'DD', 'NE'].includes(m.iucn) ? ' · IUCN ' + m.iucn : '')]);
+    return el('div', { class: 'ins-kv trait-sheet' }, rows.map(([k, v]) => el('div', null, k + ' ', el('b', { text: v }))));
   }
 
   UI.renderInspector = function () {
     const box = $('inspector');
     const sel = G.renderer.selected;
     const w = G.world;
-    if (!sel || G.state !== 'simulate') { box.hidden = true; return; }
+    if (!sel || (G.state !== 'simulate' && G.state !== 'plan')) { box.hidden = true; return; }
     if (sel.ent && !sel.ent.alive) { box.hidden = true; G.renderer.selected = null; return; }
     box.hidden = false;
     box.innerHTML = '';
@@ -530,26 +371,9 @@ window.Trophic = window.Trophic || {};
           return reg ? el('div', null, 'Group ', el('button', { class: 'linklike', text: reg.label + ' (' + reg.n + ')', onclick: () => { G.renderer.selected = { region: { sp: sp.idx, id: rid } }; UI.renderInspector(); } })) : el('span');
         })(),
         el('div', { style: { gridColumn: '1 / -1' } }, (STATE_TEXT[e.state] || (() => e.state))(e) + (e.E < B.starvationThreshold * st.maxE ? ' · starving' : ''))));
-      const rows = el('div', { class: 'gene-rows' }, el('div', { class: 'hdr' }, el('span', { text: 'Genes vs species mean' }), el('span', { text: '| Mean' })));
-      for (const k of inspectorGenes(sp)) {
-        const d = T.GENE_BY_KEY[k];
-        const v = e.g[d.i], m = sp.mean[d.i];
-        const f = x => ((x - d.min) / (d.max - d.min)) * 100 + '%';
-        rows.append(el('div', { class: 'gene-row' }, el('span', { text: d.name.split(' ·')[0].replace(' / claws', '') }),
-          el('div', { class: 'trk' }, el('i', { class: 'm', style: { left: f(m) } }), el('i', { class: 'd', style: { left: f(v) } })),
-          el('span', { class: 'v' }, v.toFixed(2) + ' ', el('span', { class: v - m >= 0 ? 'pos' : 'neg', text: signed(v - m) }))));
-      }
-      box.append(rows);
+      box.append(el('div', { class: 'eyebrow', text: 'Trait sheet · fixed for the species' }), traitSheet(sp));
       const dg = demographyBlock(sp);
       if (dg) box.append(dg);
-      if (sp.isPlayer) {
-        const run = G.run;
-        const cd = Math.max(0, w.cullReady - w.t);
-        box.append(el('div', { class: 'ins-actions' },
-          el('button', { class: 'btn accent', disabled: run.championUsed || run.mp < 2 || e.grow < 1, onclick: () => G.champion(e),
-            text: e.champ ? 'Champion ★' : 'Champion · 2 MP' }),
-          el('button', { class: 'btn cull', disabled: cd > 0, onclick: () => G.cull(e), text: cd > 0 ? 'Cull · ' + Math.ceil(cd / B.ticksPerSecond) + ' s' : 'Cull · ready' })));
-      }
       UI.placeInspector(e.x, e.y);
     } else {
       const i = sel.tile, t = w.ptype[i], P = t ? w.producers[t] : null;
@@ -607,64 +431,10 @@ window.Trophic = window.Trophic || {};
 
   // ---------- charts ----------
 
-  // Histogram of a gene across the population: solid line = mean, dashed = last round's mean.
-  UI.drawHist = function (cv, vals, d, mean, last) {
-    const { ctx, W, H } = hiDPI(cv, cv.clientWidth || 200, 38);
-    ctx.clearRect(0, 0, W, H);
-    if (!vals.length) return;
-    let sd = 0;
-    for (const v of vals) sd += (v - mean) * (v - mean);
-    sd = Math.sqrt(sd / vals.length);
-    const half = Math.max(sd * 3.2, d.step * 1.2, (d.max - d.min) * 0.06);
-    const lo = Math.max(d.min, mean - half), hi = Math.min(d.max, mean + half);
-    const nb = 22, bins = new Array(nb).fill(0);
-    for (const v of vals) bins[Math.max(0, Math.min(nb - 1, Math.floor(((v - lo) / (hi - lo || 1)) * nb)))]++;
-    const mx = Math.max(...bins, 1);
-    const bw = W / nb;
-    ctx.fillStyle = '#9CC3C6';
-    bins.forEach((b, k) => { if (b) { const h = 2 + (H - 6) * (b / mx); ctx.fillRect(k * bw + 1, H - h, bw - 2, h); } });
-    const xOf = v => ((v - lo) / (hi - lo || 1)) * W;
-    if (last != null && last >= lo && last <= hi) {
-      ctx.strokeStyle = '#555C55'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 2]);
-      ctx.beginPath(); ctx.moveTo(xOf(last), 0); ctx.lineTo(xOf(last), H); ctx.stroke(); ctx.setLineDash([]);
-    }
-    ctx.fillStyle = INK; ctx.fillRect(xOf(mean) - 1, 0, 2, H);
-  };
-
-  UI.radarValues = function (st) {
-    const eff = Math.max(st.canPlants ? st.plantA : 0, st.canMeat ? st.meatA : 0);
-    const effTop = 0.9;
-    return [
-      Math.min(1, (st.dmg * (1 + 0.25 * st.venom)) / 50), Math.min(1, (st.armor + st.reflect + st.maxHp / 150) / 1.4),
-      Math.min(1, st.speed / 0.32), Math.min(1, st.sight / 13), Math.min(1, eff / effTop),
-      Math.min(1, (st.litter / 4) * 0.6 + (1 - st.breedCd / 420) * 0.4 + 0.1),
-    ];
-  };
-
-  UI.drawRadar = function (cv, now, was) {
-    const { ctx, W, H } = hiDPI(cv, cv.clientWidth || 260, (cv.clientWidth || 260) * 0.85);
-    ctx.clearRect(0, 0, W, H);
-    const cx = W / 2, cy = H / 2 + 4, R = Math.min(W, H) * 0.33;
-    const axes = ['Offense', 'Defense', 'Speed', 'Senses', 'Efficiency', 'Fertility'];
-    const pt = (k, r) => { const a = -Math.PI / 2 + (k * Math.PI * 2) / 6; return [cx + Math.cos(a) * r, cy + Math.sin(a) * r]; };
-    ctx.strokeStyle = '#DCD3C0'; ctx.lineWidth = 1;
-    for (let r = 1; r <= 4; r++) { ctx.beginPath(); for (let k = 0; k <= 6; k++) { const [x, y] = pt(k % 6, (R * r) / 4); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke(); }
-    ctx.fillStyle = '#555C55'; ctx.font = '11px "IBM Plex Sans", system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    axes.forEach((n, k) => { const [x, y] = pt(k, R); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke(); const [lx, ly] = pt(k, R + 18); ctx.fillText(n, lx, ly); });
-    const poly = (v, stroke, fill, dash) => {
-      ctx.beginPath();
-      v.forEach((val, k) => { const [x, y] = pt(k, R * Math.max(0.05, val)); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-      ctx.closePath(); ctx.setLineDash(dash || []);
-      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-      ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
-    };
-    if (was) poly(UI.radarValues(was), '#8C8A80', null, [4, 3]);
-    poly(UI.radarValues(now), ACCENT, 'rgba(29,101,112,0.18)');
-  };
-
   // Sankey: sources → Eaten → {Assimilated, Egested}; Assimilated → {New tissue, Metabolism → heat}.
+  // rs is one species' round stats, or the consumers' combined (see T.StewardUI.combinedStats).
   // New tissue is GSP minus all respiration (NSP). When a species burned reserves, it shows as zero.
-  UI.drawSankey = function (box, rs, spName) {
+  UI.drawSankey = function (box, rs) {
     box.innerHTML = '';
     const src = Object.entries(rs.eaten).sort((a, b) => b[1] - a[1]);
     const eaten = src.reduce((a, b) => a + b[1], 0);
@@ -722,7 +492,7 @@ window.Trophic = window.Trophic || {};
   }
   UI.sourceColor = sourceColor;
 
-  // Populations as a percent of round start, with the 10% defeat line.
+  // Populations as a percent of round start.
   UI.drawPopChart = function (cv, rep) {
     const { ctx, W, H } = hiDPI(cv, cv.clientWidth || 360, Math.round((cv.clientWidth || 360) * 0.62));
     ctx.clearRect(0, 0, W, H);
@@ -733,20 +503,17 @@ window.Trophic = window.Trophic || {};
     ctx.font = '10px "IBM Plex Mono", monospace'; ctx.fillStyle = '#8C8A80'; ctx.strokeStyle = '#E7E0CD'; ctx.lineWidth = 1;
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     for (const v of [0, 0.5, 1, 1.5]) { ctx.beginPath(); ctx.moveTo(L, y(v)); ctx.lineTo(L + pw, y(v)); ctx.stroke(); ctx.fillText(Math.round(v * 100) + '%', L - 4, y(v)); }
-    ctx.strokeStyle = '#C9483F'; ctx.setLineDash([3, 3]);
-    ctx.beginPath(); ctx.moveTo(L, y(B.rivalDefeatFrac)); ctx.lineTo(L + pw, y(B.rivalDefeatFrac)); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = '#C9483F'; ctx.textAlign = 'right'; ctx.fillText('Defeat line 10%', L + pw, y(B.rivalDefeatFrac) - 8);
     ctx.fillStyle = '#8C8A80'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     B.seasons.forEach((s, k) => ctx.fillText(s.name, x(((k + 0.5) * B.roundTicks) / 4), H - Bt + 6));
     const dashes = [[], [6, 3], [2, 3], [8, 3, 2, 3], [1, 2]];
     rep.lines.forEach((ln, n) => {
       ctx.beginPath();
       rep.history.pops.forEach((row, k) => { const v = (row[ln.idx] || 0) / Math.max(1, ln.start); const px = x(rep.history.t[k]), py = y(v); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
-      ctx.strokeStyle = ln.player ? ACCENT : T.speciesColor(ln.level, ln.hue, -0.05);
-      ctx.lineWidth = ln.player ? 3 : 1.6;
-      ctx.setLineDash(ln.player ? [] : dashes[n % dashes.length]);
+      ctx.strokeStyle = T.speciesColor(ln.level, ln.hue, -0.05);
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash(dashes[n % dashes.length]);
       ctx.stroke(); ctx.setLineDash([]);
-      ln.dash = ln.player ? [] : dashes[n % dashes.length];
+      ln.dash = dashes[n % dashes.length];
     });
   };
 })(window.Trophic);

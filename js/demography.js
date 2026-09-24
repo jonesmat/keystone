@@ -46,7 +46,7 @@ window.Trophic = window.Trophic || {};
     const P = D();
     // Immigration from the regional pool: arrivals at the map edge, far more often when the species is scarce here.
     for (const sp of this.species) {
-      if (sp.isPlayer || sp.transient || sp.invasive) continue;
+      if (sp.transient || sp.invasive) continue;
       const pool = this.pool[sp.id] || this._poolEntry(sp, false);
       if (pool.poolOnly || pool.regionallyExtinct || pool.level <= 0) continue;
       const n = this.popCount[sp.idx] || 0, n0 = Math.max(2, sp.initialPop || sp.startPop || 2);
@@ -104,8 +104,7 @@ window.Trophic = window.Trophic || {};
     let k = 0;
     for (; k < size; k++) {
       const p = this._randomLand(at[0], at[1], 1.5, sp.stats.swim);
-      const g = T.sampleGenome(sp.genome, this.rng, B.founderSigma * 0.5);
-      const e = this.spawn(sp, p[0], p[1], 0, g, { grow: 1, sex: k % 2 ? 'M' : 'F' });
+      const e = this.spawn(sp, p[0], p[1], 0, sp.genome, { grow: 1, sex: k % 2 ? 'M' : 'F' });
       e.E = e.st.maxE * 0.6;
       e.age = Math.floor(this.rng.range(0.1, 0.3) * e.life);
       this.ledger.imported += e.E + e.tissue;
@@ -129,7 +128,7 @@ window.Trophic = window.Trophic || {};
   W._emigration = function () {
     const P = D();
     for (const sp of this.species) {
-      if (!sp.K || sp.isPlayer || sp.transient) continue;
+      if (!sp.K || sp.transient) continue;
       const n = this.popCount[sp.idx] || 0;
       const over = n / sp.K - P.emigrateAt;
       if (over <= 0) continue;
@@ -221,8 +220,10 @@ window.Trophic = window.Trophic || {};
   // ---------- round end: K, curves and the demography table ----------
 
   W._demographyRoundEnd = function () {
-    if (this.loading) { this.loading = false; return; }
+    if (this.loading) return;   // a loaded world restarts its round; it doesn't end one
     if (this.roundStartT == null || this.t === this.roundStartT) return;   // no round has run yet
+    if (this.demographyT === this.t) return;   // once per round end (the report and beginRound both ask)
+    this.demographyT = this.t;
     if (!this.rstats.length || !this.pbook) return;
     const pops = this.countPops().count;
     const Ks = this._estimateK(pops);

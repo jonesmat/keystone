@@ -2,7 +2,7 @@
 
 A single-player HTML5 ecosystem game about energy flowing through a living food web. Phase 3 turns it into a stewardship game: you keep a real U.S. ecosystem in balance.
 
-Keystone was called Trophic until Phase 3, and the code still uses `Trophic` as its internal namespace (`window.Trophic`) and in its save keys, so existing saves keep loading.
+Keystone was called Trophic until Phase 3, and the code still uses `Trophic` as its internal namespace (`window.Trophic`).
 
 - Game design: [Keystone_Game_Design_Document.md](Keystone_Game_Design_Document.md)
 - Phase 2 design (living genomes): [Keystone_Phase2_Design_Document.md](Keystone_Phase2_Design_Document.md)
@@ -25,23 +25,22 @@ Add `?debug=1` to show the live energy-ledger check.
 
 The game keeps no backward compatibility while it's in development: saves carry a version (`T.SAVE_VERSION`), and a save from an older version shows a message and isn't loaded. Phase 2's energetics switch and the Phase 1 save migration were removed.
 
-## Phase 2 in one paragraph
+## How it plays
 
-Every individual now carries its own genome (32 genes plus 8 neutral markers). Offspring blend two parents and pick up random mutations, so natural selection happens inside each population. When a population forms two distinct genetic clusters for two rounds, it splits into a new named species. A *Generated world* rolls a fresh roster of 10–16 consumers and 3–6 producers from archetypes, then runs a 5-round headless stability test before play. The player breeds rather than sculpts:
+You are the steward of a whole ecosystem, not one of its species. A run is 30 rounds (a round is a year) in a real U.S. ecoregion with its real species, or in one of the fictional worlds (Temperate Meadow, Open Channel, a generated world). Each round:
 
-- **Guided mutation** shifts the population mean.
-- **Selection pressure** favours the top 25% for a pinned gene.
-- **Mutation focus** triples μ for one gene.
-- **Mutant cards** spread a real outlier's gene.
-- **Champion**, **Cull** and **Isolate** act on individuals and groups during a season.
-- A split of your own lineage lets you choose which branch to keep. The other becomes a *Descendant* species.
+- **Plan:** spend Stewardship Points on management actions (burns, discing, overseeding natives, reforesting, wetlands, exclosures, reintroductions and more), placed on the map, and set harvest limits.
+- **Season:** the simulation runs and the community responds. Nothing is under your direct control.
+- **Report:** the Ecosystem Health Index (0–100, from seven textbook components), the energy through the consumers, demography for every species, interactions, keystone tests and your SP income.
+
+Win a scenario by finishing with an average EHI of 70 or more and every restoration goal met. The run ends early if the EHI stays below 30 for 2 rounds or the producers collapse. Species don't evolve: each has a fixed trait sheet.
 
 ## Layout
 
 | File | What it does |
 | --- | --- |
 | `js/balance.js` | Every tuning knob, including Phase 2 evolution, speciation and safeguard parameters |
-| `js/genes.js` | Gene schema (range, step, MP cost, upkeep), genome helpers, base64 packing for saves |
+| `js/genes.js` | The trait schema each species' fixed trait sheet is written in (range, step, upkeep), and helpers |
 | `js/data.js` | Trophic levels, the hand-authored Meadow roster, templates, directives, events, tutorial, Codex ecology notes |
 | `js/sim.js` | Fixed-step simulation (10 ticks/s): per-individual stats, juveniles, aging, mate-finding, behaviour genes, producer tile genes, microhabitats, energy ledger, versioned saves (older versions are refused, not migrated). Phase 3: GPP/NPP booking per producer, litterfall, upkeep-only metabolism with thermoregulation, body tissue, ectotherm temperature response |
 | `js/cycles.js` | Phase 3 nutrient, water and carbon cycles: soil nitrogen pools and their bacteria, legume and free-living fixation, excretion by body plan, the nitrogen ledger, rain events, infiltration, runoff, evapotranspiration, groundwater, compaction, peat, open-water carbon uptake and the CO₂/climate trend |
@@ -54,16 +53,17 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `js/catalog.js` | Phase 3 catalogs at runtime: on-demand loading, deterministic slot draws weighted by how widely a species is recorded, real traits → game definitions, the food web from real diets, the starting-number budget, slot-level stability redraws and shareable seeds |
 | `js/catalogs/*.js` | Generated real-species catalogs, one per ecoregion, plus `index.js` listing them (built by `tools/catalog/build.js`) |
 | `js/energy.js` | Phase 3 energy chain: measures each round's GPP, NPP, harvesting, assimilation, tissue growth and energy passed up per level, with the textbook ranges and each mode's target bands. Also the three pyramids (numbers, biomass, energy) and the notes that explain an inversion |
-| `js/evolution.js` | Inheritance and mutation, 2-means speciation, lineage splits, "What evolved" attribution, mutant detection, guided mutation and pressure |
-| `js/generator.js` | Archetypes, niche slots, genome sampling with quirks, food webs, names and colours, founder rolls, stability test |
+| `js/generator.js` | Generated worlds: archetypes, niche slots, trait sheets with quirks, food webs, names and colours, and the stability test |
 | `js/sprites.js` | Side-view creature art built from genes (limbs, tail, head, coat, armour, spines, wings, jaws) |
 | `js/render.js` | World view: tile map, level-shape icons, Variation tint, close-up sprites, energy motes |
-| `js/ui.js` | HUD, floating inspector, histograms, radar, Sankey, population chart |
-| `js/screens.js` | New world, Species editor, Selection report, Phylogeny, Codex, End |
-| `js/game.js` | Controller: setup, round loop, orders economy, speciation choices, phylogeny records, events, saves, input |
-| `tools/headless.js` | Run one world in Node: `node tools/headless.js grazer 10 12345 [meadow\|generated]` |
-| `tools/sweep.js` | Seed sweep against the Phase 2 balance targets: `node tools/sweep.js --seeds 20 --rounds 30 [--mode generated] [--set key=value] [--csv out.csv]` |
-| `tools/check-events.js` | Smoke tests: inheritance, events, speciation, save round-trip, refusing an older version's save, generator rules |
+| `js/ui.js` | HUD, pyramids and cycles panel, floating inspector, Sankey, population chart |
+| `js/screens.js` | New world, the round report, the Codex and the run end screen |
+| `js/steward.js` | The steward's game: the Ecosystem Health Index, Stewardship Points, management actions, harvest limits, scenario damage and goals, win, loss and score |
+| `js/stewardui.js` | The steward panel (Plan: goals, action card, queue, harvest limits; Season: watch list) and the action bar |
+| `js/game.js` | Controller: New world setup, the Plan → Season → Report loop, events, the end of a run, saves, input |
+| `tools/headless.js` | Run one world in Node: `node tools/headless.js 10 12345 [meadow\|generated]` |
+| `tools/check-events.js` | Smoke tests: fixed trait sheets, events, save round-trip, refusing an older version's save, generator rules |
+| `tools/check-steward.js` | Steward checks: the EHI, every management action, harvest limits, Rewilding's damage and goals, collapse, score and saves: `node tools/check-steward.js` |
 | `tools/catalog/build.js` | Builds an ecoregion catalog from open data (EPA ecoregions, GBIF occurrences and taxonomy, GRIIS, EltonTraits, USDA PLANTS, Open-Meteo), caching every download in `tools/catalog/cache/`: `node tools/catalog/build.js <9.3 \| 9.4.6 \| all> [--quota-scale 1.6]` |
 | `tools/check-catalog.js` | Phase 3 catalog draw checks: deterministic seeds, slot constraints, 60–150 species, a sane food web, stability with slot redraws, ledgers and tick cost: `node tools/check-catalog.js 9.4.6 songbird` |
 | `tools/check-demography.js` | Phase 3 demography checks: the round table balances exactly, half the founders are female and a species with no males doesn't breed, a species wiped out locally recolonizes (a regionally extinct one doesn't), emigration only above 0.8 K, territories don't overlap and are released on death, the Allee threshold, disease targets the highest N/K, saves keep sexes, territories and K: `node tools/check-demography.js` |
@@ -74,28 +74,9 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `tools/check-pyramids.js` | Phase 3 pyramid checks: in Temperate Meadow and Open Channel the energy pyramid must narrow every round; numbers and biomass are checked against the design's validation table: `node tools/check-pyramids.js [--seeds 3] [--rounds 8]` |
 | `tools/check-energy.js` | Phase 3 energy checks: the textbook's 100,000-unit example must come back within ±10%, then hands-off worlds are measured against each mode's bands: `node tools/check-energy.js [--seeds 3] [--rounds 8] [--mode game\|realism\|both] [--set key=value]` |
 
-## Where it deviates from the Phase 2 design
-
-- **Genome storage:** each entity owns a `Float32Array`, rather than using one shared pool. Saves still pack all genomes as a single base64 `Float32Array`.
-- **Simulation thread:** the sim still runs on the main thread (about 0.5–1 ms per tick at 400–600 organisms). The planned Blob-URL Web Worker hasn't been built.
-- **Speciation distance:** 0.55 instead of 0.35, because ordinary single-cluster populations already measure 0.25–0.3.
-- **Stability test:**
-  - Dominance is judged by consumer *biomass*, with a 60% limit rather than 40% of individuals, since small r-strategists are naturally the most numerous.
-  - A roster takes about 3 s per attempt in the browser, and some seeds need several attempts.
-- **Decomposers** reproduce asexually. That settles one of the design's open questions.
-- **Tuning beyond the design:**
-  - A 3× lifespan multiplier on the longevity gene.
-  - A two-round grace period before NPC predators target the player, matching the GDD tutorial.
-  - A predator sprint at the start of each chase.
-  - A Type III functional response (predators pay less attention to rare prey).
-  - Smaller energy stores for meat-eaters.
-  - Lower resting upkeep for apex predators.
-  - Carnivore P raised to 0.18 and apex P to 0.14.
-- **Not built yet:** Sandbox mode (its tab is disabled), the Wetland and Taiga biomes as full campaigns (the generator's biome budget changes sunlight, water and winter only), and the Web Worker.
-
 ## Phase 3 progress
 
-**P3-M1 Energy chain: built.** The rest of Phase 3 (genomes, the player species and the Phase 2 screens retired; stewardship) hasn't started, so the game still plays as Phase 2 on top of the new energy model.
+**P3-M1 Energy chain: built.**
 
 - **GPP and NPP** are booked separately per producer. Each producer has its own respiration share (`resp`, NPP efficiency 25–80%) and an **edible share** (`edible`): only leaf and fruit join the grazeable standing crop, while stems, roots and wood drop as litter. Standing crop also turns over as litter, so uneaten NPP feeds decomposers.
 - **No per-meal P.** Every assimilated EU is kept, and all respiration is upkeep: basal × a per-level field metabolic rate, activity, and thermoregulation `c × M^0.67 × max(0, T_body − T_air)` for endotherms. Biomes have a mean temperature and a seasonal swing.
@@ -204,16 +185,15 @@ Last `check-succession.js` run: all checks pass. A volcanic isle was 93% coloniz
 
 Last `check-interactions.js` run: all checks pass. Removing the Edwards Plateau cast's Queen butterfly cut its paired sandmat's fruit; a cleared strip cut woodland 2% and interior 11%; cowbirds parasitized 94 of 200 edge broods and none inside; cleaners lowered host loads from 52% to 38% of their cap; Thornbacks were within 6 tiles of a Tuskbeast 39% of the time as followers against 16% on their own; removing every herbivore dropped richness 57% and earned a badge. The other suites pass. Hands-off Meadow carnivores remain the weak spot: Game mode's herbivore → carnivore transfer is 3.5% over 6 seeds (4.9% before this part; band 8–15%), since carnivores barely hang on with or without the new interactions.
 
-Predators last longer than in Phase 2: with a Grazer player, apex predators now survive all 10 test rounds, and primary carnivores mostly do. **Realism mode isn't balanced yet:** endotherms and predators die out within 10 rounds.
+**P3-M7 Steward play: part 1 (the steward's loop) built.** In `js/steward.js`, `js/stewardui.js` and a rewritten `js/game.js` and `js/screens.js`.
 
-## Balance status
+- **Retired:** the player species, genomes that vary by individual, inheritance, mutation, speciation, the Species editor, Mutation Points, directives, the territory marker, Champion and Cull, rivals, the Phylogeny screen, the variation tint and producer tile-gene evolution. Every individual shares its species' fixed trait sheet.
+- **The loop:** Plan (the world paused, an action bar under the map, the steward panel on the right) → Season → Report. Area actions are placed with a brush on the map and paid for up front; species actions pick a species in the panel. Standing orders (invasive control, protection) cost SP every round they stay on.
+- **Management actions:** prescribed burn, shred, disc (bare for a round, a nitrogen flush), overseed natives, plant natives, plant legumes, loosen soil, reforest, wildlife corridor, restore wetland, riparian buffer, grazing exclosure (keeps grazers and browsers of fence size and up out for 3 rounds), reintroduction from the regional pool (native wildlife only), translocation, invasive control and protect species (no harvest; fire and heavy work stay out of its range).
+- **Harvest limits:** a bag limit per species per round, taken through the season and booked as deaths in the demography. It pays SP by body mass, half value while the species is below ½K.
+- **The Ecosystem Health Index:** energy pyramid integrity (20), biodiversity (20), population stability (15), nutrient, water and carbon balance (15), keystone and mutualist presence (10), habitat structure (10) and small-population viability (10), each with its main cause.
+- **Scenarios** now set the damage the steward inherits (Rewilding: compacted soil, cattle overstocked 2.5×, a non-native brome monoculture on about 60% of the land) and restoration goals checked every round.
+- **Win, loss and score:** finish 30 rounds with an average EHI of 70 or more and every goal met; lose if the EHI stays below 30 for 2 rounds or producers collapse. Score = average EHI × rounds + 40 per species recovered and per reintroduction − 40 per avoidable extinction, times the difficulty.
+- **Not yet:** knowledge levels and surveys (part 2) and stakeholders, trust and land sales (part 3). The steward currently sees everything.
 
-Run `tools/sweep.js` for current numbers. Last sweep, hands-off (no directives or orders), 8–10 seeds:
-
-| Setup | Every level alive at round 5 | Carnivores (median last round) | Player median survival | Rosters passing within 5 tries |
-| --- | --- | --- | --- | --- |
-| Meadow · Grazer · 15 rounds | 80% | 8 (apex 8) | 15 rounds | — |
-| Meadow · Hunter · 15 rounds | 40% | 8 (apex 6) | 4 rounds | — |
-| Generated · Grazer · 12 rounds | 63% | 11 (apex 6) | 12 rounds | 50% (the game allows 20) |
-
-Two Phase 2 targets aren't met yet: every level alive at round 15 (0% of runs; the target is ≥ 70%), and one species holding more than half of consumers (it happens in nearly every run; the target is ≤ 15%). Tick cost stays under 1.2 ms.
+Last `check-steward.js` run: all checks pass. **Open: the hands-off Meadow is producer-limited.** Without evolution to mask it, herbivores crash in 4 of 6 hands-off seeds and carnivores die out in nearly all of them. NPP halves over 6 rounds as plants become nitrogen-limited (3% → 32% of the time). Game mode's endotherm tissue growth reads 3.3% and plants → herbivores 7.4% (bands 6–12% and 8–15%). **Realism mode isn't balanced yet.**

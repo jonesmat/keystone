@@ -75,8 +75,8 @@ T.Catalog.load('9.4.6', cat => {
       const edgeTile = block.find(i => w.ptype[i] && !w.isInterior(i) && Math.abs((i % N) - 28) <= 0), inTile = block.find(i => w.isInterior(i) && w.edgeDist[i] >= 5);
       const at = i => [(i % N) + 0.5, ((i / N) | 0) + 0.5];
       const [ex, ey] = at(edgeTile), [ix, iy] = at(inTile);
-      const f = w.spawn(host, ex, ey, 50, T.sampleGenome(host.genome, w.rng, 0), { grow: 1, sex: 'F' });
-      const c = w.spawn(par, ex, ey + 0.5, 50, T.sampleGenome(par.genome, w.rng, 0), { grow: 1, sex: 'F' });
+      const f = w.spawn(host, ex, ey, 50, host.genome, { grow: 1, sex: 'F' });
+      const c = w.spawn(par, ex, ey + 0.5, 50, par.genome, { grow: 1, sex: 'F' });
       w._rebuildGrid();
       let atEdge = 0, inside = 0;
       for (let k = 0; k < 200; k++) if (w._nestParasite(f)) atEdge++;
@@ -139,8 +139,8 @@ function meadowChecks() {
   console.log('\nCommensal followers');
   {
     // Thornbacks trail Tuskbeasts (the cattle egret pattern). Share of Thornbacks within 6 tiles of one, with and without.
-    const run = follow => {
-      const w2 = world(T.Gen.hashSeed(9300, 1));
+    const run1 = (follow, seed) => {
+      const w2 = world(T.Gen.hashSeed(9300, seed));
       const f = byName(w2, 'Thornback');
       if (!follow) delete f.flags.follower;
       w2._interactionsRefresh();
@@ -153,6 +153,8 @@ function meadowChecks() {
       }
       return { share: near / Math.max(1, n), hosts: [...(f.hosts || [])].map(h => w2.species[h].name), w: w2 };
     };
+    // Averaged over 3 seeds: how much time a follower spends near a host varies with the map.
+    const run = follow => { const rs = [1, 2, 3].map(k => run1(follow, k)); return { share: rs.reduce((x, r) => x + r.share, 0) / 3, hosts: rs[0].hosts, w: rs[0].w }; };
     const a = run(false), b = run(true);
     console.log('    Thornbacks within 6 tiles of a Tuskbeast: ' + Math.round(a.share * 100) + '% on their own, ' + Math.round(b.share * 100) + '% as followers (hosts: ' + b.hosts.join(', ') + ')');
     check(b.share > a.share * 1.5, 'followers keep near their hosts');

@@ -150,11 +150,6 @@ window.Trophic = window.Trophic || {};
     this.climate = 1.0;
     this.ectoSlowAll = false;
     this.events = [];
-    this.directive = null;
-    this.directiveReady = {};
-    this.marker = null;
-    this.isoCounter = 0;
-    this.cullReady = 0;
     this.species = [];
     this.producers = [null];
     this.ents = [];
@@ -214,23 +209,15 @@ window.Trophic = window.Trophic || {};
   T.World = World;
   World.prototype.N = N;
 
-  // opts: { seed, roster: {producers, species}, player: def|null, biome, difficulty, debug }
+  // opts: { seed, roster: {producers, species, pool}, biome, mode, closed, primary, climateTrend, debug }
   T.createWorld = function (opts) {
     const w = new World(opts);
-    // In an aquatic world the player's lineage swims, and a plant-eating one strains plankton like the natives.
-    if (opts.player && w.biome.aquatic) {
-      const flags = Object.assign({}, opts.player.flags, { swim: true });
-      if ((opts.player.level || 'herbivore') === 'herbivore') flags.filter = true;
-      opts = Object.assign({}, opts, { player: Object.assign({}, opts.player, { flags }) });
-    }
-    const diff = opts.difficulty || B.difficulties.standard;
     w.setProducers(opts.roster.producers);
     w._generateTerrain();
     w._initCycles(true);
     w._initSuccession(!!opts.primary);
-    // Real (catalog) species have fixed traits, as Phase 3 intends: they don't mutate.
-    for (const def of opts.roster.species) w.addSpecies(def, false).mu = def.catalogKey ? 0 : diff.npcMu;
-    if (opts.player) w.player = w.addSpecies(opts.player, true);
+    // Every species has a fixed trait sheet (Phase 3): individuals share it and nothing evolves.
+    for (const def of opts.roster.species) w.addSpecies(def);
     w._initDemography(opts.roster.pool || [], opts.closed);
     w._populate();
     for (const sp of w.species) sp.initialPop = w.countPops().count[sp.idx];
@@ -254,19 +241,19 @@ window.Trophic = window.Trophic || {};
 
   World.prototype.producerById = function (id) { return this.producers.find(p => p && p.id === id) || null; };
 
-  World.prototype.addSpecies = function (def, isPlayer) {
+  World.prototype.addSpecies = function (def) {
     const genome = def.genome instanceof Float32Array ? new Float32Array(def.genome) : T.genomeFrom(def.genome, def.flags, def.level);
     const sp = {
-      idx: this.species.length, id: def.id, name: def.name, isPlayer: !!isPlayer,
+      idx: this.species.length, id: def.id, name: def.name,
       level: def.level || 'herbivore', archetype: def.archetype || null, archetypeName: def.archetypeName || null,
       base: Object.assign({}, def.base), eats: (def.eats || []).slice(),
       flags: Object.assign({}, def.flags || {}), genome, mean: new Float32Array(genome), sd: new Float32Array(NG),
       startPop: def.startPop || 0, initialPop: def.initialPop || 0, herdSize: def.herdSize || null,
-      invasive: !!def.invasive, transient: !!def.transient, descendant: !!def.descendant,
-      parentId: def.parentId || null, originRound: def.originRound || 1, hue: def.hue || 0,
+      invasive: !!def.invasive, transient: !!def.transient, domestic: !!def.domestic,
+      originRound: def.originRound || 1, hue: def.hue || 0,
       behavior: def.behavior || '', weakness: def.weakness || '', note: def.note || '',
       stratum: def.stratum || null, activity: def.activity || null,
-      mu: def.mu || 1, counter: def.counter || 0, pressure: [], pressureCut: {}, focus: {}, splitStreak: 0,
+      counter: def.counter || 0,
       stats: null, foods: null, preyLevels: null, spriteKey: '', extinctRound: null,
       // Catalog species (Phase 3): the real species behind the definition.
       meta: def.meta || (def.catalogKey ? { sci: def.sci, native: def.native, iucn: def.iucn, catalogKey: def.catalogKey, taxon: def.taxon,
@@ -285,42 +272,22 @@ window.Trophic = window.Trophic || {};
   World.prototype.speciesById = function (id) { return this.species.find(s => s.id === id) || null; };
 
   World.prototype.refreshSpecies = function (sp) {
-    if (sp.isPlayer) sp.level = T.classifyLevel(sp.mean, sp.base);
-    sp.stats = T.deriveStats(sp, sp.mean, 1);
+    sp.stats = T.deriveStats(sp, sp.genome, 1);
     const f = new Set();
-    if (sp.isPlayer) {
-      if (sp.stats.canPlants) for (const id of this.producerIds) f.add(id);
-      if (sp.stats.meat <= 0.9) f.add('fruit');
-      if (sp.stats.canMeat) f.add('carrion');
-    } else {
-      for (const t of sp.eats) if (this.producerIds.has(t) || t === 'fruit' || t === 'carrion' || t === 'detritus') f.add(t);
-    }
+    for (const t of sp.eats) if (this.producerIds.has(t) || t === 'fruit' || t === 'carrion' || t === 'detritus') f.add(t);
     sp.foods = f;
     sp.eatsPlants = [...this.producerIds].some(t => f.has(t));
     let key = sp.level + '|' + sp.hue;
-    for (let i = 0; i < NG; i++) if (!GENES[i].marker) key += '|' + Math.round(sp.mean[i] / GENES[i].step * 2);
+    for (let i = 0; i < NG; i++) if (!GENES[i].marker) key += '|' + Math.round(sp.genome[i] / GENES[i].step * 2);
     sp.spriteKey = key;
   };
 
-  // Mean and SD of every gene over the living population.
+  // Re-derive each species' stats from its fixed trait sheet and count its living individuals.
   World.prototype.updateMeans = function (only) {
     for (const sp of this.species) {
       if (only && sp !== only) continue;
-      const mean = new Float64Array(NG), sq = new Float64Array(NG);
       let n = 0;
-      for (const e of this.ents) {
-        if (!e.alive || e.sp !== sp) continue;
-        n++;
-        const g = e.g;
-        for (let i = 0; i < NG; i++) { mean[i] += g[i]; sq[i] += g[i] * g[i]; }
-      }
-      if (n > 0) {
-        for (let i = 0; i < NG; i++) {
-          const m = mean[i] / n;
-          sp.mean[i] = m;
-          sp.sd[i] = Math.sqrt(Math.max(0, sq[i] / n - m * m));
-        }
-      }
+      for (const e of this.ents) if (e.alive && e.sp === sp) n++;
       sp.n = n;
       this.refreshSpecies(sp);
     }
@@ -344,49 +311,16 @@ window.Trophic = window.Trophic || {};
   };
 
   World.prototype._canEat = function (a, b) {
-    if (a === b || a.level === 'decomposer') return false;
-    if (!a.isPlayer) {
-      // Tutorial grace: NPC predators leave the player alone for the first rounds (GDD: predators arrive in round 3).
-      if (b.isPlayer && this.round <= B.predatorGraceRounds) return false;
-      if (a.eats.includes(b.id)) return true;
-      if (!b.isPlayer || !a.stats.canMeat || b.stats.mass > a.stats.mass * 1.25) return false;
-      const grazerPrey = a.preyLevels.has('herbivore') || a.preyLevels.has('omnivore');
-      return a.preyLevels.has(b.level) || (grazerPrey && (b.level === 'herbivore' || b.level === 'omnivore'));
-    }
-    if (!a.stats.canMeat) return false;
-    return b.stats.mass <= a.stats.mass * this._huntRatio(a);
+    return a !== b && a.level !== 'decomposer' && a.eats.includes(b.id);
   };
 
-  World.prototype._huntRatio = function (a) {
-    const hunting = this.directive && this.directive.id === 'hunt';
-    return 1.0 + 0.3 * a.stats.pack + (hunting ? 0.5 : 0);
-  };
-
-  // Individual-level check: species diet, plus juveniles of bigger species are fair game.
+  // Individual-level check: species diet, plus juveniles of bigger species of a level it hunts are fair game.
   World.prototype.canHunt = function (e, o) {
     if (e === o || !e.alive || !o.alive) return false;
     const a = e.sp, b = o.sp;
     if (this.edible[a.idx][b.idx]) return true;
     if (o.grow >= 1 || a === b || a.level === 'decomposer' || !e.st.canMeat) return false;
-    if (a.isPlayer) return o.st.mass <= e.st.mass * this._huntRatio(a);
-    if (b.isPlayer && this.round <= B.predatorGraceRounds) return false;
-    return (a.preyLevels.has(b.level) || (b.isPlayer && a.preyLevels.has('herbivore'))) && o.st.mass <= e.st.mass * 1.5;
-  };
-
-  // Player species <-> NPC conversion (lineage splits). NPCs need explicit diet links.
-  World.prototype.convertToNPC = function (sp) {
-    const eats = [...sp.foods];
-    for (const b of this.species) if (b !== sp && this.edible[sp.idx][b.idx]) eats.push(b.id);
-    sp.eats = eats;
-    sp.isPlayer = false;
-    this.refreshSpecies(sp);
-  };
-  World.prototype.convertToPlayer = function (sp) {
-    sp.isPlayer = true;
-    sp.eats = [];
-    sp.descendant = false;
-    this.player = sp;
-    this.refreshSpecies(sp);
+    return a.preyLevels.has(b.level) && o.st.mass <= e.st.mass * 1.5;
   };
 
   // ---------- terrain ----------
@@ -508,20 +442,13 @@ window.Trophic = window.Trophic || {};
   };
 
   World.prototype._populate = function () {
-    if (this.player) {
-      const pc = this._randomLand(N / 2, N / 2, N / 2 - 10, this.player.stats.swim);
-      this.spawnGroup(this.player, this.player.startPop, pc);
-      this.safeZone = { x: pc[0], y: pc[1], r: 16 };
-    }
     for (const sp of this.species) {
-      if (sp.isPlayer) continue;
       if (sp.grid) this._seedPopulation(sp, sp.startPop);
       else this.spawnGroup(sp, sp.startPop, null);
     }
-    this.safeZone = null;
   };
 
-  // Founders: individuals sampled around the species genome, at random ages.
+  // Founders: individuals of the species at random ages.
   World.prototype.spawnGroup = function (sp, count, center, opts) {
     opts = opts || {};
     const rng = this.rng;
@@ -530,18 +457,12 @@ window.Trophic = window.Trophic || {};
     while (left > 0) {
       let size = 1;
       if (sp.herdSize) size = Math.min(left, sp.herdSize[0] + rng.int(sp.herdSize[1] - sp.herdSize[0] + 1));
-      else if (sp.isPlayer) size = Math.min(left, Math.max(3, Math.ceil(count / 2)));
       else size = Math.min(left, 1 + rng.int(3));
       const wet = sp.stats.swim;
-      let c = center ? this._randomLand(center[0], center[1], 3, wet) : this._randomLand(N / 2, N / 2, N / 2 - 2, wet);
-      const sz = this.safeZone;
-      if (sz && sp.stats.canMeat && sp.level !== 'decomposer') {
-        for (let k = 0; k < 20 && Math.hypot(c[0] - sz.x, c[1] - sz.y) < sz.r; k++) c = this._randomLand(N / 2, N / 2, N / 2 - 2, wet);
-      }
+      const c = center ? this._randomLand(center[0], center[1], 3, wet) : this._randomLand(N / 2, N / 2, N / 2 - 2, wet);
       for (let k = 0; k < size; k++) {
         const p = this._randomLand(c[0], c[1], 2, wet);
-        const g = T.sampleGenome(sp.genome, rng, B.founderSigma);
-        const e = this.spawn(sp, p[0], p[1], 0, g, { grow: 1 });
+        const e = this.spawn(sp, p[0], p[1], 0, sp.genome, { grow: 1 });
         e.E = e.st.maxE * (opts.energy || rng.range(0.5, 0.75));
         e.age = Math.floor(rng.range(0, 0.3) * e.life);
         if (sp.flags.territorial) e.home = [c[0], c[1]];
@@ -567,7 +488,7 @@ window.Trophic = window.Trophic || {};
       attackCd: 0, chase: 0, fightT: 0, venomT: 0, venomDmg: 0, venomBy: -1, moveFrac: 0,
       hideT: 0, home: null, alive: true, born: this.t, age: 0,
       life: Math.round(st.lifeTicks * this.rng.range(0.85, 1.15)),
-      parents: opts.parents || null, offspring: 0, champ: false, iso: opts.iso || 0, mem: null,
+      parents: opts.parents || null, offspring: 0, mem: null,
       sex: opts.sex || (this.rng.next() < 0.5 ? 'F' : 'M'), pair: null, terr: false, emigrating: null, para: 0,
     };
     this.ents.push(e);
@@ -600,7 +521,7 @@ window.Trophic = window.Trophic || {};
       // upkeepHeat is all metabolic respiration (thermoHeat is the thermoregulation share of it).
       eaten: {}, eatenLv: {}, assimLv: {}, ingested: 0, assimilated: 0, gain: 0, digestHeat: 0, excreted: 0, upkeepHeat: 0, thermoHeat: 0,
       predLoss: 0, starveLoss: 0, otherLoss: 0, births: 0, deaths: {}, kills: {},
-      startPop: 0, startE: 0, birthMids: [],
+      startPop: 0, startE: 0,
     };
   };
 
@@ -612,6 +533,7 @@ window.Trophic = window.Trophic || {};
     this._cyclesBeginRound();
     this._successionBeginRound();
     this._interactionsBeginRound();
+    this._stewardBeginRound();
     this._regionsBeginRound();
     this.roundTick = 0;
     this.seasonIdx = 0;
@@ -626,11 +548,11 @@ window.Trophic = window.Trophic || {};
     });
     this.pbook = this._newProducerBook();
     this.roundStartT = this.t;
-    this.roundStartMeans = this.species.map(sp => new Float32Array(sp.mean));
     this.roundStartProducers = this.producerMeans();
     this._preySwitch();
     this.history = { t: [], pops: [] };
     this._recordHistory();
+    this.loading = false;
   };
 
   // End-of-round assertion (every biome): energy fixed at each level must be below the level beneath it.
@@ -705,16 +627,8 @@ window.Trophic = window.Trophic || {};
 
   World.prototype.pyramid = function () {
     const lv = { producer: this.producerBiomass(), herbivore: 0, omnivore: 0, carnivore1: 0, carnivore2: 0, decomposer: 0 };
-    const pl = { producer: 0, herbivore: 0, omnivore: 0, carnivore1: 0, carnivore2: 0, decomposer: 0 };
-    const desc = { producer: 0, herbivore: 0, omnivore: 0, carnivore1: 0, carnivore2: 0, decomposer: 0 };
-    for (const e of this.ents) {
-      if (!e.alive) continue;
-      const b = e.E + e.tissue;
-      lv[e.sp.level] += b;
-      if (e.sp.isPlayer) pl[e.sp.level] += b;
-      else if (e.sp.descendant) desc[e.sp.level] += b;
-    }
-    return { levels: lv, player: pl, descendant: desc };
+    for (const e of this.ents) if (e.alive) lv[e.sp.level] += e.E + e.tissue;
+    return { levels: lv };
   };
 
   World.prototype._recordHistory = function () {
@@ -726,7 +640,7 @@ window.Trophic = window.Trophic || {};
   World.prototype._preySwitch = function () {
     const pops = this.countPops().count;
     for (const a of this.species) {
-      if (a.isPlayer || a.level === 'decomposer' || !a.stats.canMeat || pops[a.idx] === 0) continue;
+      if (a.level === 'decomposer' || !a.stats.canMeat || pops[a.idx] === 0) continue;
       const prey = a.eats.map(id => this.speciesById(id)).filter(Boolean);
       if (!prey.length) continue;
       const ok = prey.some(b => pops[b.idx] >= B.preySwitchFrac * Math.max(1, b.initialPop || b.startPop));
@@ -743,52 +657,6 @@ window.Trophic = window.Trophic || {};
       }
     }
     this.rebuildDiet();
-  };
-
-  // ---------- directives ----------
-
-  World.prototype.activeDirective = function () {
-    if (this.directive && this.t < this.directive.until) return this.directive.id;
-    if (this.directive) { const was = this.directive.id; this.directive = null; if (was === 'hunt') this.rebuildDiet(); }
-    return null;
-  };
-
-  World.prototype.issueDirective = function (id) {
-    const ready = this.directiveReady[id] || 0;
-    if (this.t < ready) return false;
-    this.directiveReady[id] = this.t + B.directiveCooldown;
-    if (!this.marker && (id === 'migrate' || id === 'swarm' || id === 'isolate')) {
-      const c = this.centroid(this.player);
-      this.marker = id !== 'migrate' && c ? { x: c[0], y: c[1] } : { x: N / 2, y: N / 2 };
-    }
-    if (id === 'isolate') {
-      // Tag the group inside the marker; tags are inherited, so the split persists across rounds.
-      const tag = ++this.isoCounter;
-      let n = 0;
-      for (const e of this.ents) {
-        if (!e.alive || e.sp !== this.player) continue;
-        if (Math.hypot(e.x - this.marker.x, e.y - this.marker.y) <= B.territoryRadius) { e.iso = tag; n++; }
-      }
-      this.lastIsolated = n;
-      return true;
-    }
-    this.directive = { id, until: this.t + B.directiveDuration };
-    this.rebuildDiet();
-    for (const e of this.ents) if (e.sp.isPlayer) e.think = 0;
-    return true;
-  };
-
-  World.prototype.centroid = function (sp) {
-    let x = 0, y = 0, n = 0;
-    for (const e of this.ents) if (e.alive && e.sp === sp) { x += e.x; y += e.y; n++; }
-    return n ? [x / n, y / n] : null;
-  };
-
-  World.prototype.cull = function (e) {
-    if (!e || !e.alive || !e.sp.isPlayer || this.t < this.cullReady) return false;
-    this.cullReady = this.t + B.cullCooldown;
-    this._die(e, 'culled', -1);
-    return true;
   };
 
   // ---------- spatial hash ----------
@@ -832,10 +700,8 @@ window.Trophic = window.Trophic || {};
     this.airTemp = this.seasonTemp(this.seasonIdx);
     this.thermoDT = Math.max(0, B.bodyTemp - this.airTemp) * this.mode.thermoScale * this.insulation;
     this._ectoPerf();
-    this.activeDirective();
 
     this._photosynthesis();
-    if (this.t % 10 === 0) this._reseedProducers();
     this._rebuildGrid();
     const ents = this.ents;
     for (let k = 0; k < ents.length; k++) this._upkeep(ents[k]);
@@ -852,6 +718,7 @@ window.Trophic = window.Trophic || {};
     this._cyclesTick();
     this._successionTick();
     this._interactionsTick();
+    this._stewardTick();
     if (this.t % B.populations.update === 0) this._updatePopulations();
     this._demographyTick();
     this._groundwater();
@@ -978,26 +845,6 @@ window.Trophic = window.Trophic || {};
     this.nh4[i] += n - spread;
   };
 
-  // Producer evolution: heavily grazed tiles regrow from a thriving neighbour of the same type, with mutation.
-  World.prototype._reseedProducers = function () {
-    const rng = this.rng, sig = B.producerMutation;
-    for (let k = 0; k < 90; k++) {
-      const i = rng.int(NT), t = this.ptype[i];
-      if (!t) continue;
-      const P = this.producers[t];
-      if (this.pE[i] > P.max * 0.25) continue;
-      const x = i % N, y = (i / N) | 0;
-      const nx = x + rng.int(3) - 1, ny = y + rng.int(3) - 1;
-      if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
-      const j = ny * N + nx;
-      if (j === i || this.ptype[j] !== t || this.pE[j] < P.max * 0.6) continue;
-      const mut = s => (rng.next() < 0.5 ? rng.gauss() * s : 0);
-      this.pgGrowth[i] = clamp(this.pgGrowth[j] + mut(sig * 0.8), 0.6, 1.4);
-      this.pgTough[i] = clamp(this.pgTough[j] + mut(sig * 3), 0, 3);
-      this.pgTol[i] = clamp(this.pgTol[j] + mut(sig), 0, 1);
-    }
-  };
-
   World.prototype._upkeep = function (e) {
     if (!e.alive) return;
     const st = e.st, rs = this.rstats[e.sp.idx];
@@ -1059,22 +906,11 @@ window.Trophic = window.Trophic || {};
 
   World.prototype._decide = function (e) {
     const sp = e.sp, st = e.st, rng = this.rng;
-    const dir = sp.isPlayer ? this.activeDirective() : null;
     if (e.hideT > 0) return;
     if (st.hibernate && this.seasonIdx === 3) { e.state = 'rest'; e.tk = 0; return; }
     if (st.ecto && this.ectoTorpid && e.state !== 'flee') { e.state = 'rest'; e.tk = 0; return; }
     if (sp.transient) { e.state = 'migrate'; e.tk = 4; return; }
     if (e.state === 'fight' && e.te && e.te.alive && e.fightT > 0) return;
-
-    if (dir === 'hide') {
-      e.threat = null;
-      if (!this.isCover(e.x, e.y)) {
-        const c = this._findTile(e, 5, i => this.ptype[i] && (this.producers[this.ptype[i]].height || 0) >= 2);
-        if (c >= 0) { e.state = 'wander'; e.tk = 4; e.wx = (c % N) + 0.5; e.wy = ((c / N) | 0) + 0.5; return; }
-      }
-      e.state = 'hide'; e.tk = 0;
-      return;
-    }
 
     // --- threats ---
     const sight = st.sight;
@@ -1093,8 +929,6 @@ window.Trophic = window.Trophic || {};
     e.threat = null;
     if (threat) {
       let fleeAt = sight * (1.3 - st.bold);
-      if (dir === 'forage') fleeAt = sight * 0.3;
-      if (dir === 'swarm') fleeAt = sight * 0.25;
       if (st.pack > 0) {
         let mates = 0;
         this.query(e.x, e.y, 3, o => { if (o.sp === sp) mates++; });
@@ -1117,38 +951,32 @@ window.Trophic = window.Trophic || {};
     if (e.state === 'hunt' && e.te && e.te.alive && e.chase < B.chaseLimit &&
         Math.hypot(e.te.x - e.x, e.te.y - e.y) < sight * 1.2) return;
     if (hunger > 0.05 && e.state === 'graze' && this._tileFood(e) > 8) return;
-    const marker = sp.isPlayer ? this.marker : null;
-    if (dir === 'migrate' && hunger < 0.8) { e.state = 'migrate'; e.tk = 4; e.wx = marker.x; e.wy = marker.y; return; }
-    if (dir === 'swarm' && hunger < 0.7) {
-      const d = Math.hypot(marker.x - e.x, marker.y - e.y);
-      if (d > 2.5) { e.state = 'swarm'; e.tk = 4; e.wx = marker.x + rng.range(-1.5, 1.5); e.wy = marker.y + rng.range(-1.5, 1.5); return; }
-    }
     // Emigrants head for the map edge (and leave from it, in _demographyTick).
-    if (e.emigrating && !dir) { e.state = 'migrate'; e.tk = 4; e.wx = e.emigrating[0]; e.wy = e.emigrating[1]; return; }
+    if (e.emigrating) { e.state = 'migrate'; e.tk = 4; e.wx = e.emigrating[0]; e.wy = e.emigrating[1]; return; }
     // Ready to breed but no mate nearby: go and find one.
     // Females do the seeking, toward males (her pair partner first, for monogamous species).
-    if (!sp.transient && !sp.flags.asexual && e.grow >= 1 && e.breedCd <= 0 && e.E >= this._breedThr(e) * st.maxE && !dir && e.sex === 'F') {
+    if (!sp.transient && !sp.flags.asexual && e.grow >= 1 && e.breedCd <= 0 && e.E >= this._breedThr(e) * st.maxE && e.sex === 'F') {
       let mate = null, md = Infinity;
       this.query(e.x, e.y, Math.max(10, sight * 1.5), (o, d2) => {
-        if (o !== e && o.sp === sp && o.grow >= 1 && o.iso === e.iso && o.sex === 'M' && (o === e.pair ? (d2 = 0, true) : d2 < md)) { md = d2; mate = o; }
+        if (o !== e && o.sp === sp && o.grow >= 1 && o.sex === 'M' && (o === e.pair ? (d2 = 0, true) : d2 < md)) { md = d2; mate = o; }
       });
       if (mate && md > B.mateRadius * B.mateRadius * 0.5) {
         e.state = 'seek'; e.tk = 4; e.wx = mate.x; e.wy = mate.y; return;
       }
     }
     // Cleaners go to parasitized hosts; commensal followers keep near their hosts.
-    if (sp.flags.cleaner && hunger > 0.05 && !dir) {
+    if (sp.flags.cleaner && hunger > 0.05) {
       const host = this._cleanerTarget(e);
       if (host && rng.chance(0.6)) { e.state = 'clean'; e.tk = 2; e.te = host; return; }
     }
-    if (sp.hosts && hunger < 0.75 && !dir && rng.chance(0.5)) {
+    if (sp.hosts && hunger < 0.75 && rng.chance(0.5)) {
       const host = this._followTarget(e);
       if (host) {
         const d = Math.hypot(host.x - e.x, host.y - e.y), keep = sp.flags.follower === 'predator' ? 3.5 : 1.5;
         if (d > keep) { e.state = 'follow'; e.tk = 3; e.wx = host.x + rng.range(-1, 1); e.wy = host.y + rng.range(-1, 1); return; }
       }
     }
-    if (hunger < 0.08 && dir !== 'hunt') { this._wander(e); return; }
+    if (hunger < 0.08) { this._wander(e); return; }
 
     // Filter-feeders don't hunt for food patches: they drift and strain whatever plankton the tile holds.
     if (st.filter) {
@@ -1165,9 +993,8 @@ window.Trophic = window.Trophic || {};
     let best = 0, bestKind = 0, bestTile = -1, bestEnt = null, bestCarr = null, bestFood = null;
     // Commensal followers forage near their host: food close to it scores higher, food far from it lower.
     const hostAt = sp.hosts ? this._followTarget(e) : null;
-    const terrPen = (x, y) => (marker && Math.hypot(x - marker.x, y - marker.y) > B.territoryRadius ? 0.5 : 1) *
-      (hostAt ? (Math.hypot(x - hostAt.x, y - hostAt.y) <= B.interactions.followNear ? 1.4 : 0.6) : 1);
-    const foodMult = dir === 'forage' ? 1.5 : 1;
+    const terrPen = (x, y) => (hostAt ? (Math.hypot(x - hostAt.x, y - hostAt.y) <= B.interactions.followNear ? 1.4 : 0.6) : 1);
+    const foodMult = 1;
 
     if (st.pack > 0 && st.canMeat && hunger > 0.1) {
       let mateTgt = null;
@@ -1180,6 +1007,7 @@ window.Trophic = window.Trophic || {};
 
     // --- plants, fruit, detritus ---
     const decomposer = sp.level === 'decomposer';
+    const fenced = this.exclosure && sp.stats.mass >= B.steward.fenceMass;   // exclosures keep out grazers and browsers (young too)
     if (sp.eatsPlants || sp.foods.has('fruit') || decomposer) {
       const r = decomposer ? 3 : Math.min(8, Math.ceil(sight));
       const cx = e.x | 0, cy = e.y | 0;
@@ -1201,6 +1029,7 @@ window.Trophic = window.Trophic || {};
           continue;
         }
         const t = this.ptype[i];
+        if (fenced && this.exclosure[i]) continue;
         if (t && st.canPlants && sp.foods.has(this.producers[t].id)) {
           const P = this.producers[t];
           const avail = this.pE[i] - P.max * B.grazeFloor;
@@ -1231,8 +1060,8 @@ window.Trophic = window.Trophic || {};
     }
 
     // --- prey ---
-    if (st.canMeat && e.hp > 0.3 * st.maxHp && (hunger > 0.7 - st.aggr || dir === 'hunt')) {
-      const huntMult = dir === 'hunt' ? 2 : 1;
+    if (st.canMeat && e.hp > 0.3 * st.maxHp && hunger > 0.7 - st.aggr) {
+      const huntMult = 1;
       const mem = e.mem;
       this.query(e.x, e.y, sight, (o, d2) => {
         if (!this.canHunt(e, o)) return;
@@ -1291,6 +1120,7 @@ window.Trophic = window.Trophic || {};
     if (e.food === 'detr') return this.detr[i];
     if (e.food === 'fruit') return this.fruit[i];
     if (e.food === 'pop') return this.popFoodAt(this.species[e.popSp], i);
+    if (this.exclosure && this.exclosure[i] && e.sp.stats.mass >= B.steward.fenceMass) return 0;   // fenced off
     return this.ptype[i] ? this.pE[i] - this.producers[this.ptype[i]].max * B.grazeFloor : 0;
   };
 
@@ -1315,8 +1145,7 @@ window.Trophic = window.Trophic || {};
     e.state = 'wander'; e.tk = 4;
     if (!reached && was === 'wander' && !rng.chance(0.15)) return;
     let cx = e.x, cy = e.y, r = st.roam;
-    if (sp.isPlayer && this.marker) { cx = this.marker.x; cy = this.marker.y; r = B.territoryRadius; }
-    else if (e.home) { cx = e.home[0]; cy = e.home[1]; r = Math.max(6, st.roam); }
+    if (e.home) { cx = e.home[0]; cy = e.home[1]; r = Math.max(6, st.roam); }
     else if ((st.herd > 0 || st.pack > 0) && st.cohesion > 0.05) {
       let sx = 0, sy = 0, n = 0;
       this.query(e.x, e.y, 6, o => { if (o.sp === sp) { sx += o.x; sy += o.y; n++; } });
@@ -1409,6 +1238,7 @@ window.Trophic = window.Trophic || {};
       }
       case 'graze': {
         const i = e.ti;
+        if (e.food !== 'pop' && e.food !== 'detr' && this.exclosure && this.exclosure[i] && e.sp.stats.mass >= B.steward.fenceMass) { e.state = 'wander'; e.think = 0; return; }
         const cx = (i % N) + 0.5, cy = ((i / N) | 0) + 0.5;
         if (Math.hypot(cx - e.x, cy - e.y) > 0.45) {
           // Grazers crop as they walk: a half-rate bite from any plant they eat on the tile they're crossing.
@@ -1493,6 +1323,7 @@ window.Trophic = window.Trophic || {};
   World.prototype._grazeOnTheWay = function (e) {
     const st = e.st, j = this.tileAt(e.x, e.y), t = this.ptype[j];
     if (!t || !e.sp.foods.has(this.producers[t].id) || (st.swim && this.terrain[j] !== 1)) return;
+    if (this.exclosure && this.exclosure[j] && e.sp.stats.mass >= B.steward.fenceMass) return;
     const room = st.maxE - e.E;
     if (room < 1) return;
     const P = this.producers[t];
@@ -1526,9 +1357,7 @@ window.Trophic = window.Trophic || {};
     rs.digestHeat += resp;
     rs.excreted += exc;
     this._flowAcc[e.sp.level] += gain;
-    if ((e.sp.isPlayer && this.rng.chance(0.25)) || this.rng.chance(0.02)) {
-      this.events.push({ type: 'bite', x: e.x, y: e.y, meat: !this.plantNames.has(src), player: e.sp.isPlayer });
-    }
+    if (this.rng.chance(0.02)) this.events.push({ type: 'bite', x: e.x, y: e.y, meat: !this.plantNames.has(src) });
   };
 
   World.prototype._attack = function (e, o) {
@@ -1548,10 +1377,6 @@ window.Trophic = window.Trophic || {};
     if (st.venom > 0) { o.venomT = 40; o.venomDmg = 0.02 * st.dmg * st.venom; o.venomBy = e.sp.idx; }
     if (o.grow >= 1 && os.dmg > 0 && (os.charge > 0.2 || os.mass >= st.mass * 0.8)) {
       e.hp -= os.dmg * (0.25 + 0.35 * os.charge) * (1 - st.armor) * (rng.next() < 0.5 ? 1 : 0);
-    }
-    if (o.sp.isPlayer && this.directive && this.directive.id === 'swarm') {
-      let n = 0;
-      this.query(o.x, o.y, 3, m => { if (m !== o && m.sp === o.sp && n < 4) { n++; e.hp -= m.st.dmg * 0.3 * (1 - st.armor); } });
     }
     if (rng.chance(0.3)) this.events.push({ type: 'hit', x: o.x, y: o.y });
     if (o.hp <= 0) {
@@ -1582,7 +1407,7 @@ window.Trophic = window.Trophic || {};
     if (cause === 'starved') rs.starveLoss += e.E;
     else if (cause === 'k') rs.predLoss += e.E;
     else rs.otherLoss += e.E;
-    this.events.push({ type: cause === 'k' ? 'kill' : 'death', x: e.x, y: e.y, player: e.sp.isPlayer });
+    this.events.push({ type: cause === 'k' ? 'kill' : 'death', x: e.x, y: e.y });
     let c = null;
     if (e.E > 0.5) {
       // A kill passes energy up the grazing chain at the prey's level; a body left by starvation, age or
@@ -1598,13 +1423,12 @@ window.Trophic = window.Trophic || {};
     return c;
   };
 
-  // Breeding threshold for one individual: density dependence, selection pressure and decomposer cap.
+  // Breeding threshold for one individual: density dependence and the decomposer cap.
   World.prototype._breedThr = function (e) {
     const sp = e.sp;
     const n = this.popCount[sp.idx] || 0;
     if (sp.level === 'decomposer' && n >= B.decomposerCap) return 2;
     let thr = B.breedingThreshold;
-    for (const gi of sp.pressure) if (e.g[gi] >= sp.pressureCut[gi]) { thr = B.pressureThreshold; break; }
     const cap = B.maxConsumers * B.densityShare;
     if (n > cap) thr += (B.densityStep * (n - cap)) / (B.maxConsumers * 0.05);
     return thr;
@@ -1626,21 +1450,18 @@ window.Trophic = window.Trophic || {};
     let mate = null, ms = -1;
     // The initiating parent must pass the breeding threshold; a mate only needs to be in fair condition.
     if (!sp.flags.asexual) this.query(e.x, e.y, R, o => {
-      if (o === e || o.sp !== sp || o.grow < 1 || o.iso !== e.iso) return;
+      if (o === e || o.sp !== sp || o.grow < 1) return;
       if (o.sex !== 'M') return;
       // Monogamous: her partner, or an unpaired male. Polygynous and explosive males mate again without a rest.
       if (mono && o !== e.pair && o.pair && o.pair.alive) return;
       if (mono && o.breedCd > 0) return;
       if (o.E < 0.5 * o.st.maxE) return;
-      let sim = 0;
-      for (let k = 0; k < 8; k++) sim += Math.abs(o.g[G.m0 + k] - e.g[G.m0 + k]);
-      const s = o.E / o.st.maxE + 0.5 * (1 - sim / 8) + (o.champ ? 2 : 0) + (o === e.pair ? 5 : 0);
+      const s = o.E / o.st.maxE + (o === e.pair ? 5 : 0);
       if (s > ms) { ms = s; mate = o; }
     });
-    let muMult = 1, give;
+    let give;
     if (mate) {
-      const ga = e.E * (B.offspringShare / 2) * (e.champ ? B.championShare : 1);
-      const gb = mate.E * (B.offspringShare / 2) * (mate.champ ? B.championShare : 1);
+      const ga = e.E * (B.offspringShare / 2), gb = mate.E * (B.offspringShare / 2);
       e.E -= ga; mate.E -= gb;
       give = ga + gb;
       if (mono) mate.breedCd = mate.st.breedCd;
@@ -1654,7 +1475,6 @@ window.Trophic = window.Trophic || {};
     }
     e.breedCd = st.breedCd;
     e.offspring++;
-    if ((this.popCount[sp.idx] || 0) < B.rescuePop) muMult *= 2;
     const tissue0 = st.tissueAdult * B.juvenileMass;
     const n = Math.max(1, Math.min(st.litter, Math.floor(give / (B.minYoungEnergy * st.maxE * B.juvenileMass + tissue0)))), each = give / n;
     const tissueEach = Math.min(tissue0, each * 0.6);
@@ -1663,30 +1483,23 @@ window.Trophic = window.Trophic || {};
     e.nS = 0; if (mate) mate.nS = 0;
     const nEach = Math.min(nPool / n, tissueEach * B.nitrogen.animal);
     e.nS += nPool - nEach * n;
-    const pa = e.g, pb = mate ? mate.g : e.g;
     const rs = this.rstats[sp.idx];
-    if (rs.birthMids.length < 500) {
-      const mid = new Float32Array(NG);
-      for (let i = 0; i < NG; i++) mid[i] = (pa[i] + pb[i]) / 2;
-      rs.birthMids.push(mid);
-    }
     for (let k = 0; k < n; k++) {
       const p = this._randomLand(e.x, e.y, 0.8, st.swim);
-      const g = T.Evo.inherit(this, pa, pb, sp, muMult);
       // The cowbird pattern: near an edge, a nest parasite's chick takes one place in the brood, raised on the host's energy.
       const par = k === 0 ? this._nestParasite(e) : null;
       if (par) {
-        const pc = this.spawn(par, p[0], p[1], each - tissueEach, T.sampleGenome(par.genome, this.rng, B.founderSigma), { grow: B.juvenileMass, tissue: tissueEach, nT: nEach });
+        this.spawn(par, p[0], p[1], each - tissueEach, par.genome, { grow: B.juvenileMass, tissue: tissueEach, nT: nEach });
         this.rstats[par.idx].births++;
         continue;
       }
-      const c = this.spawn(sp, p[0], p[1], each - tissueEach, g, { grow: B.juvenileMass, tissue: tissueEach, nT: nEach, parents: [e.num, mate ? mate.num : e.num], iso: e.iso });
+      const c = this.spawn(sp, p[0], p[1], each - tissueEach, sp.genome, { grow: B.juvenileMass, tissue: tissueEach, nT: nEach, parents: [e.num, mate ? mate.num : e.num] });
       c.hp = c.st.maxHp * c.st.youngHp;
       c.home = e.home;
       if (c.E > c.st.maxE) { this.detr[this.tileAt(c.x, c.y)] += c.E - c.st.maxE; c.E = c.st.maxE; }
     }
     rs.births += n;
-    this.events.push({ type: 'birth', x: e.x, y: e.y, player: sp.isPlayer });
+    this.events.push({ type: 'birth', x: e.x, y: e.y });
   };
 
   World.prototype._decay = function () {
@@ -1797,21 +1610,19 @@ window.Trophic = window.Trophic || {};
     return { species: this.species[bi], killed: kill };
   };
 
-  // ---------- save / load (v2) ----------
+  // ---------- save / load ----------
 
   const r2 = v => Math.round(v * 100) / 100;
   const r3 = v => Math.round(v * 1000) / 1000;
-  const spFields = ['id', 'name', 'isPlayer', 'level', 'archetype', 'archetypeName', 'base', 'eats', 'flags', 'startPop', 'initialPop', 'herdSize',
-    'invasive', 'transient', 'descendant', 'parentId', 'originRound', 'hue', 'behavior', 'weakness', 'note', 'mu', 'counter', 'extinctRound', 'arrival', 'meta', 'stratum', 'activity'];
+  const spFields = ['id', 'name', 'level', 'archetype', 'archetypeName', 'base', 'eats', 'flags', 'startPop', 'initialPop', 'herdSize',
+    'invasive', 'transient', 'domestic', 'originRound', 'hue', 'behavior', 'weakness', 'note', 'counter', 'extinctRound', 'arrival', 'meta', 'stratum', 'activity'];
 
   World.prototype.serialize = function () {
     const alive = this.ents.filter(e => e.alive);
-    const pool = new Float32Array(alive.length * NG);
-    alive.forEach((e, k) => pool.set(e.g, k * NG));
     return {
-      v: T.SAVE_VERSION, ng: NG, mode: this.mode.id, seed: this.seed, t: this.t, round: this.round, rng: this.rng.s, nextId: this.nextId,
+      v: T.SAVE_VERSION, mode: this.mode.id, seed: this.seed, t: this.t, round: this.round, rng: this.rng.s, nextId: this.nextId,
       biome: this.biome, eventLight: this.eventLight, growthMod: this.growthMod, ectoSlowAll: this.ectoSlowAll, climate: this.climate,
-      marker: this.marker, isoCounter: this.isoCounter, cumulative: this.cumulative,
+      cumulative: this.cumulative,
       producers: this.producers.slice(1),
       species: this.species.map(s => {
         const o = {};
@@ -1823,49 +1634,44 @@ window.Trophic = window.Trophic || {};
       pE: Array.from(this.pE, r2), fruit: Array.from(this.fruit, r2), detr: Array.from(this.detr, r2),
       nutr: Array.from(this.nutr, r3), moist: Array.from(this.moist, r3), elev: Array.from(this.elev, r3),
       pgGrowth: Array.from(this.pgGrowth, r3), pgTough: Array.from(this.pgTough, r3), pgTol: Array.from(this.pgTol, r3),
-      genomes: T.b64.encode(pool),
-      ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, e.iso, r2(e.tissue), r3(e.nT), r3(e.nS), e.sex, e.terr ? 1 : 0, e.id, r2(e.para)]),
+      ents: alive.map(e => [e.sp.idx, r2(e.x), r2(e.y), r2(e.E), r2(e.hp), e.breedCd, e.home, r3(e.grow), e.age, e.life, e.num, e.offspring, e.parents, r2(e.tissue), r3(e.nT), r3(e.nS), e.sex, e.terr ? 1 : 0, e.id, r2(e.para)]),
       carrion: this.carrion.filter(c => c.alive).map(c => [r2(c.x), r2(c.y), r2(c.E), c.src, c.lv, r3(c.N)]),
       cycles: this._cyclesState(),
       demography: this._demographyState(),
       succession: this._successionState(),
       interactions: this._interactionsState(),
+      steward: this._stewardState(),
       populations: Object.fromEntries(this.species.filter(sp => sp.grid).map(sp => [sp.idx, this._popState(sp)])),
     };
   };
 
   // Saves carry this version; any other is from an older game and isn't loaded (no migrations).
-  T.SAVE_VERSION = 5;
+  T.SAVE_VERSION = 7;
 
   T.loadWorld = function (s, opts) {
     if (!s || s.v !== T.SAVE_VERSION) throw new Error('This save is from an older version of Keystone and cannot be loaded');
     const w = new World({ seed: s.seed, debug: opts && opts.debug, biome: s.biome, mode: s.mode });
     w.t = s.t; w.round = s.round || 1; w.rng.s = s.rng; w.nextId = s.nextId;
     w.eventLight = s.eventLight; w.growthMod = s.growthMod; w.ectoSlowAll = s.ectoSlowAll; w.climate = s.climate || 1;
-    w.marker = s.marker; w.isoCounter = s.isoCounter || 0; w.cumulative = s.cumulative || { captured: 0 };
+    w.cumulative = s.cumulative;
     w.setProducers(s.producers);
     for (const d of s.species) {
       const def = Object.assign({}, d, { genome: T.b64.decode(d.genome) });
-      const sp = w.addSpecies(def, d.isPlayer);
-      for (const f of ['initialPop', 'counter', 'extinctRound', 'arrival', 'mu']) if (d[f] != null) sp[f] = d[f];
-      if (d.isPlayer) w.player = sp;
+      const sp = w.addSpecies(def);
+      for (const f of ['initialPop', 'counter', 'extinctRound', 'arrival']) if (d[f] != null) sp[f] = d[f];
     }
     w.terrain.set(s.terrain); w.ptype.set(s.ptype); w.pE.set(s.pE); w.fruit.set(s.fruit); w.detr.set(s.detr); w.nutr.set(s.nutr);
     w.moist.set(s.moist); w.elev.set(s.elev); w.pgGrowth.set(s.pgGrowth); w.pgTough.set(s.pgTough); w.pgTol.set(s.pgTol);
     w._computeShade();
     w._restoreCycles(s.cycles);
     w._successionRestore(s.succession);
-    const pool = T.b64.decode(s.genomes);
-    const ng = s.ng;
     const idMap = {};
-    s.ents.forEach((a, k) => {
-      const g = T.newGenome();
-      g.set(pool.subarray(k * ng, k * ng + Math.min(ng, NG)));
+    s.ents.forEach(a => {
       const sp = w.species[a[0]];
       const counter = sp.counter;
-      const e = w.spawn(sp, a[1], a[2], a[3], g, { grow: a[7], parents: a[12], iso: a[13], tissue: a[14], nT: a[15] });
-      e.nS = a[16]; e.sex = a[17]; e.terr = !!a[18]; e.para = a[20];
-      idMap[a[19]] = e.id;
+      const e = w.spawn(sp, a[1], a[2], a[3], sp.genome, { grow: a[7], parents: a[12], tissue: a[13], nT: a[14] });
+      e.nS = a[15]; e.sex = a[16]; e.terr = !!a[17]; e.para = a[19];
+      idMap[a[18]] = e.id;
       sp.counter = counter;
       e.hp = a[4]; e.breedCd = a[5]; e.home = a[6]; e.age = a[8]; e.life = a[9]; e.num = a[10]; e.offspring = a[11];
     });
@@ -1873,6 +1679,7 @@ window.Trophic = window.Trophic || {};
     for (const k in s.populations) { const sp = w.species[+k]; if (sp) w._popRestore(sp, s.populations[k]); }
     w._demographyRestore(s.demography, idMap);
     w._interactionsRestore(s.interactions);
+    w._stewardRestore(s.steward);
     w.loading = true;   // the beginRound below restarts the round; it doesn't end one
     w.updateRegions();
     w.updateMeans();

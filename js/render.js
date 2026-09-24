@@ -1,4 +1,4 @@
-// Keystone — Canvas 2D world renderer: camera, tile map, level-shape icons, variation tint, energy motes.
+// Keystone — Canvas 2D world renderer: camera, tile map, level-shape icons, management areas, energy motes.
 window.Trophic = window.Trophic || {};
 
 (function (T) {
@@ -24,7 +24,8 @@ window.Trophic = window.Trophic || {};
     this.frame = 0;
     this.particles = [];
     this.selected = null;
-    this.tint = { on: false, gene: 'speed' };
+    this.planMarks = [];   // management action areas to outline: { x, y, r, color, label }
+    this.brush = null;     // the area the steward is placing: { x, y, r, color }
     this.insets = { left: 0, right: 0, top: 0, bottom: 0 };
     this.resize();
   }
@@ -137,12 +138,11 @@ window.Trophic = window.Trophic || {};
     for (const ev of world.events) {
       const x = ev.x * TP, y = ev.y * TP;
       if (ev.type === 'bite') {
-        const n = ev.player ? 3 : 1;
-        for (let k = 0; k < n; k++) this._spawn(x + rand(-6, 6), y + rand(-6, 6), rand(-4, 4), rand(-14, -4), 0.9, ev.meat ? '#E0813A' : '#F5C542', 1.6);
+        for (let k = 0; k < 1; k++) this._spawn(x + rand(-6, 6), y + rand(-6, 6), rand(-4, 4), rand(-14, -4), 0.9, ev.meat ? '#E0813A' : '#F5C542', 1.6);
       } else if (ev.type === 'kill') {
         for (let k = 0; k < 8; k++) this._spawn(x, y, rand(-30, 30), rand(-30, 30), 0.6, '#C9483F', 2);
       } else if (ev.type === 'birth') {
-        for (let k = 0; k < 5; k++) this._spawn(x, y, rand(-18, 18), rand(-24, -4), 0.8, ev.player ? '#FFFFFF' : '#FFF3B0', 1.4);
+        for (let k = 0; k < 5; k++) this._spawn(x, y, rand(-18, 18), rand(-24, -4), 0.8, '#FFF3B0', 1.4);
       } else if (ev.type === 'death') {
         for (let k = 0; k < 4; k++) this._spawn(x, y, rand(-6, 6), rand(-14, -6), 1.2, 'rgba(90,90,90,0.8)', 2.5);
       } else if (ev.type === 'hit') this._spawn(x, y, rand(-10, 10), rand(-10, 10), 0.3, '#FFFFFF', 1.5);
@@ -153,15 +153,6 @@ window.Trophic = window.Trophic || {};
   Renderer.prototype._spawn = function (x, y, vx, vy, life, color, size) {
     if (this.particles.length < 500) this.particles.push({ x, y, vx, vy, life, max: life, color, size });
   };
-
-  // Blue (low) → orange (high) for the variation tint, relative to the species' spread.
-  function tintColor(z) {
-    const t = Math.max(0, Math.min(1, 0.5 + z * 0.35));
-    const lo = [70, 110, 190], mid = [230, 225, 205], hi = [230, 120, 40];
-    const a = t < 0.5 ? lo : mid, b = t < 0.5 ? mid : hi, u = t < 0.5 ? t * 2 : (t - 0.5) * 2;
-    return 'rgb(' + Math.round(a[0] + (b[0] - a[0]) * u) + ',' + Math.round(a[1] + (b[1] - a[1]) * u) + ',' + Math.round(a[2] + (b[2] - a[2]) * u) + ')';
-  }
-  T.tintColor = tintColor;
 
   Renderer.prototype.draw = function (world, alpha, dt) {
     const ctx = this.ctx, c = this.cam, dpr = this.dpr;
@@ -190,7 +181,7 @@ window.Trophic = window.Trophic || {};
     this._drawPlantGlyphs(world, tx0, ty0, tx1, ty1, tileScreen);
     ctx.fillStyle = SEASON_TINT[world.seasonIdx];
     ctx.fillRect(0, 0, WORLD_PX, WORLD_PX);
-    if (world.marker) this._drawMarker(world.marker);
+    this._drawAreas(world);
 
     this._drawPopulations(world, tx0, ty0, tx1, ty1, tileScreen);
 
@@ -203,9 +194,6 @@ window.Trophic = window.Trophic || {};
 
     // creatures
     const sprites = tileScreen >= 38;
-    const tint = this.tint.on && world.player ? this.tint : null;
-    const tg = tint ? T.G[tint.gene] : -1;
-    const tMean = tint ? world.player.mean[tg] : 0, tSd = tint ? Math.max(world.player.sd[tg], T.GENES[tg].step * 0.1) : 1;
     const minX = tx0 - 1, maxX = tx1 + 2, minY = ty0 - 1, maxY = ty1 + 2;
     const iconPx = Math.max(3.2, Math.min(9, tileScreen * 0.3));
     for (const e of world.ents) {
@@ -218,15 +206,7 @@ window.Trophic = window.Trophic || {};
       ctx.globalAlpha = hidden ? 0.45 : 1;
       const r = (iconPx * (0.75 + 0.2 * Math.sqrt(e.st.mass)) * (e.grow < 1 ? 0.75 : 1)) / c.zoom;
       if (sprites) this._drawSprite(e, x, y, tileScreen);
-      else {
-        const fill = tint && sp === world.player ? tintColor((e.g[tg] - tMean) / tSd) : T.speciesColor(sp.level, sp.hue, 0);
-        this._drawIcon(sp.level, x, y, r, fill, c.zoom);
-      }
-      if (sp.isPlayer) {
-        ctx.strokeStyle = ACCENT; ctx.lineWidth = Math.max(1.2, 1.8 / c.zoom) ;
-        ctx.beginPath(); ctx.arc(x, y, (sprites ? tileScreen * 0.55 / c.zoom : r * 1.55), 0, Math.PI * 2); ctx.stroke();
-        if (e.champ) { ctx.fillStyle = '#F5C542'; this._star(x + r * 1.3, y - r * 1.3, r * 0.7); }
-      }
+      else this._drawIcon(sp.level, x, y, r, T.speciesColor(sp.level, sp.hue, 0), c.zoom);
       ctx.globalAlpha = 1;
     }
 
@@ -322,14 +302,6 @@ window.Trophic = window.Trophic || {};
     ctx.stroke();
   };
 
-  Renderer.prototype._star = function (x, y, r) {
-    const ctx = this.ctx;
-    ctx.beginPath();
-    for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + (k * Math.PI) / 5, rr = k % 2 ? r * 0.45 : r; ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = INK; ctx.lineWidth = r * 0.15; ctx.stroke();
-  };
-
   Renderer.prototype._line = function (x0, y0, x1, y1, color) {
     const ctx = this.ctx;
     ctx.strokeStyle = color; ctx.lineWidth = 1.5 / this.cam.zoom;
@@ -406,18 +378,27 @@ window.Trophic = window.Trophic || {};
     }
   };
 
-  Renderer.prototype._drawMarker = function (m) {
+  // Management areas: fenced exclosures and protected tiles on the map, queued actions, and the brush being placed.
+  Renderer.prototype._drawAreas = function (world) {
     const ctx = this.ctx, z = this.cam.zoom;
-    const x = m.x * TP, y = m.y * TP;
-    ctx.fillStyle = 'rgba(29,101,112,0.06)';
-    ctx.strokeStyle = 'rgba(29,101,112,0.85)'; ctx.lineWidth = 1.5 / z;
-    ctx.setLineDash([6 / z, 5 / z]);
-    ctx.beginPath(); ctx.arc(x, y, B.territoryRadius * TP, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.setLineDash([]);
-    const s = 1 / Math.max(0.5, z);
-    ctx.strokeStyle = INK; ctx.lineWidth = 2 * s;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 22 * s); ctx.stroke();
-    ctx.fillStyle = ACCENT;
-    ctx.beginPath(); ctx.moveTo(x, y - 22 * s); ctx.lineTo(x + 13 * s, y - 17 * s); ctx.lineTo(x, y - 12 * s); ctx.closePath(); ctx.fill();
+    if (world.exclosure) {
+      ctx.strokeStyle = 'rgba(122,74,30,0.8)'; ctx.lineWidth = 1.2 / z;
+      ctx.beginPath();
+      for (let i = 0; i < N * N; i++) if (world.exclosure[i]) ctx.rect((i % N) * TP + 1, ((i / N) | 0) * TP + 1, TP - 2, TP - 2);
+      ctx.stroke();
+    }
+    const ring = (m, dash) => {
+      ctx.fillStyle = m.fill || 'rgba(29,101,112,0.08)';
+      ctx.strokeStyle = m.color || ACCENT; ctx.lineWidth = 1.6 / z;
+      ctx.setLineDash(dash ? [6 / z, 4 / z] : []);
+      ctx.beginPath(); ctx.arc(m.x * TP, m.y * TP, m.r * TP, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]);
+      if (m.label) {
+        ctx.fillStyle = INK; ctx.font = (11 / z) + 'px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(m.label, m.x * TP, (m.y - m.r) * TP - 4 / z);
+      }
+    };
+    for (const m of this.planMarks) ring(m, true);
+    if (this.brush) ring(this.brush, false);
   };
 })(window.Trophic);

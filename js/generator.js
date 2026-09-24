@@ -83,14 +83,11 @@ window.Trophic = window.Trophic || {};
     venom: ['Needle', 'Venom', 'Sting'], burrow: ['Burrow', 'Tunnel', 'Den'], social: ['Pack', 'Herd', 'Band'], senses: ['Keen', 'Far', 'Whisker'],
     apex: ['Grave', 'Dread', 'Iron'], decomposer: ['Silt', 'Rot', 'Loam'], none: ['Moor', 'Fen', 'Dale', 'Brook', 'Mead'],
   };
-  const DAUGHTER_SUFFIX = ['leaper', 'runner', 'dweller', 'strider', 'walker', 'crawler', 'ling', 'fang', 'back', 'skipper', 'wing', 'maw', 'tail', 'claw'];
-  const ALL_SUFFIX = new Set(ARCHETYPES.flatMap(a => a.suffix).concat(DAUGHTER_SUFFIX));
 
   const SLOTS = { herbivore: [3, 5], omnivore: [2, 3], carnivore1: [2, 4], carnivore2: [1, 2], decomposer: [1, 2] };
   // Projected income/upkeep margin band per level (carnivores run leaner, as the 10% rule predicts).
   const MARGIN = { herbivore: [0.10, 0.40], omnivore: [0.10, 0.40], carnivore1: [-0.15, 0.25], carnivore2: [-0.25, 0.15], decomposer: [-1, 99] };
   const MASS_BAND = { herbivore: [0.8, 12], omnivore: [1.5, 6], carnivore1: [1.5, 7], carnivore2: [9, 15], decomposer: [0.3, 0.8] };
-  const FOUNDER_POP = { herbivore: 20, omnivore: 12, carnivore1: 8, carnivore2: 3, decomposer: 20 };
 
   const Gen = (T.Gen = { ARCHETYPES, ARCH_BY_ID, PRODUCER_ARCHETYPES, MARGIN });
 
@@ -185,22 +182,6 @@ window.Trophic = window.Trophic || {};
   Gen.nameFor = function (g, arch, rng, taken) {
     const root = dominantRoot(g, arch.level, rng);
     return uniqueName(root, rng.pick(arch.suffix), taken, rng, arch.suffix, ROOTS.none);
-  };
-
-  // A daughter species keeps its parent's root ("Duskhopper" → "Duskleaper").
-  Gen.daughterName = function (parent, existing, rng) {
-    const taken = new Set(existing);
-    let root = parent.split(' ')[0].replace(/s$/, '');
-    let joiner = parent.includes(' ') ? '' : '-';   // "Burrow Hopper" → "Burrowleaper"
-    for (const s of ALL_SUFFIX) {
-      if (root.toLowerCase().endsWith(s) && root.length > s.length + 2) { root = root.slice(0, root.length - s.length); joiner = ''; break; }
-    }
-    const pool = DAUGHTER_SUFFIX.filter(s => !parent.toLowerCase().endsWith(s) && !parent.toLowerCase().endsWith(s + 's'));
-    for (let k = 0; k < 20; k++) {
-      const n = root + joiner + rng.pick(pool);
-      if (!taken.has(n)) return n;
-    }
-    return parent + ' II';
   };
 
   // ---------- rosters ----------
@@ -339,42 +320,11 @@ window.Trophic = window.Trophic || {};
     }
   }
 
-  // ---------- founders ----------
-
-  Gen.rollFounder = function (archId, seed) {
-    const A = ARCH_BY_ID[archId];
-    const rng = new T.RNG(seed);
-    const taken = new Set();
-    const def = makeSpeciesDef(A, rng, taken, 0);
-    def.id = 'player';
-    def.flags = {};
-    def.startPop = FOUNDER_POP[A.level];
-    def.herdSize = null;
-    return def;
-  };
-
-  Gen.customFounder = function (level) {
-    const g = T.newGenome();
-    const cfg = {
-      herbivore: { size: 3, diet: 0, speed: 0.15, sight: 6 }, omnivore: { size: 3, diet: 0.5, speed: 0.15, sight: 6 },
-      carnivore1: { size: 4, diet: 0.9, speed: 0.17, sight: 7 }, carnivore2: { size: 10, diet: 1, speed: 0.14, sight: 8 },
-    }[level];
-    g[G.size] = cfg.size; g[G.diet] = cfg.diet; g[G.head] = cfg.diet >= 0.5 ? 1 : 0;
-    for (let m = 0; m < 8; m++) g[G.m0 + m] = 0.5;
-    return { id: 'player', name: '', level, archetype: 'custom', archetypeName: 'Custom build', base: { speed: cfg.speed, sight: cfg.sight, apex: level === 'carnivore2' },
-      eats: [], flags: {}, genome: g, startPop: FOUNDER_POP[level], hue: 0 };
-  };
-
-  Gen.templateFounder = function (tpl) {
-    return { id: 'player', name: tpl.name + 's', level: tpl.level, archetype: 'template-' + tpl.id, archetypeName: tpl.niche + ' template',
-      base: Object.assign({}, tpl.base), eats: [], flags: {}, genome: T.genomeFrom(tpl.genome, {}, tpl.level), startPop: tpl.startPop, hue: 0 };
-  };
-
   // ---------- stability test ----------
 
-  // Runs a roster headless (no player) for 5 rounds. step(budgetMs) advances it; returns true when finished.
+  // Runs a roster headless for 5 rounds. step(budgetMs) advances it; returns true when finished.
   Gen.StabilityTest = function (roster, seed, biome, rounds) {
-    this.world = T.createWorld({ seed, roster, player: null, biome });
+    this.world = T.createWorld({ seed, roster, biome });
     this.round = 1;
     this.rounds = rounds || 5;
     this.failedIds = [];

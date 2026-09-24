@@ -1,14 +1,12 @@
-// Keystone — Phase 2 controller: New world setup (generated rosters + stability test), the round loop
-// (Evolve → Simulate → Selection report), breeding orders, speciation choices, phylogeny records,
-// victory/defeat, events, save/load and input.
+// Keystone — controller: New world setup (rosters, catalogs and their stability tests), the steward's round loop
+// (Plan → Season → Report), events, the end of a run, save/load and input.
 window.Trophic = window.Trophic || {};
 
 (function (T) {
   'use strict';
-  const B = T.BALANCE;
+  const B = T.BALANCE, St = T.Steward;
   // Saves from older versions of the game aren't migrated: they're recognised and refused.
   const SAVE_KEY = 'keystone.save', OLD_SAVE_KEYS = ['trophic.save.v2', 'trophic.save.v1'], SETTINGS_KEY = 'trophic.settings.v1';
-  const clone = o => JSON.parse(JSON.stringify(o));
   const $ = id => document.getElementById(id);
   function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
   function loadKey(k) { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
@@ -19,7 +17,7 @@ window.Trophic = window.Trophic || {};
     state: 'newworld', run: null, world: null, renderer: null,
     speed: 1, paused: false, acc: 0, last: 0, tickMs: 0,
     settings: { music: 0.35, sfx: 0.6, hints: true, debug: false },
-    placing: false, keys: {}, mouse: { x: 0, y: 0, inside: false }, menuOpen: false, overlayReturn: null,
+    chosen: null, keys: {}, mouse: { x: 0, y: 0, inside: false }, menuOpen: false, overlayReturn: null,
   });
   const UI = () => T.UI, S = () => T.Screens;
 
@@ -30,14 +28,10 @@ window.Trophic = window.Trophic || {};
     if (s) Object.assign(G.settings, s);
     if (/[?&]debug=1/.test(location.search)) G.settings.debug = true;
     G.renderer = new T.Renderer($('world'));
-    G.setup = {
-      mode: 'meadow', seed: randSeed(), biome: 'meadow', roster: T.Gen.meadowRoster(), stability: { state: 'idle' },
-      ftab: 'templates', templateId: 'grazer', archetypeId: 'pack-hunter', rollSeed: randSeed(), rerolls: 0, rolled: null,
-      customLevel: 'herbivore', difficulty: 'standard',
-    };
+    G.setup = { mode: 'meadow', seed: randSeed(), biome: 'meadow', roster: T.Gen.meadowRoster(), stability: { state: 'idle' }, difficulty: 'standard' };
     T.UI.init(G);
     bindInput();
-    window.addEventListener('resize', () => { if (G.state === 'simulate') { G.renderer.resize(); G.renderer.clampCam(); } });
+    window.addEventListener('resize', () => { if (G.state === 'simulate' || G.state === 'plan') { G.renderer.resize(); G.renderer.clampCam(); } });
     const unlock = () => { T.Audio.init(); T.Audio.setVolumes(G.settings.music, G.settings.sfx); };
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
@@ -58,12 +52,11 @@ window.Trophic = window.Trophic || {};
   G.showNewWorld = function () {
     G.state = 'newworld';
     G.run = null;
+    if (T.KeystoneRunner) T.KeystoneRunner.cancel();
     UI().show('newworld');
     G.renderNewWorld();
   };
-  G.renderNewWorld = function () {
-    S().renderNewWorld(storedSave());
-  };
+  G.renderNewWorld = function () { S().renderNewWorld(storedSave()); };
 
   G.setMode = function (m) {
     G.setup.mode = m;
@@ -74,11 +67,7 @@ window.Trophic = window.Trophic || {};
       if (G.setup.scenario === undefined) G.setup.scenario = (T.SCENARIOS.find(s => s.ecoregion === G.setup.ecoregion) || {}).id || null;
       G.regenerateCatalog();
     } else if (m === 'generated') G.regenerate();
-    else if (m === 'channel') {
-      G.cancelGen(); G.setup.roster = T.Gen.channelRoster(); G.setup.biome = 'channel'; G.setup.stability = { state: 'idle' };
-      // A warm-blooded grazer can't strain enough plankton to stay warm in open water; start from a mixed diet.
-      if (G.setup.ftab === 'templates' && G.setup.templateId === 'grazer') G.setup.templateId = 'opportunist';
-    }
+    else if (m === 'channel') { G.cancelGen(); G.setup.roster = T.Gen.channelRoster(); G.setup.biome = 'channel'; G.setup.stability = { state: 'idle' }; }
     else { G.cancelGen(); G.setup.roster = T.Gen.meadowRoster(); G.setup.biome = 'meadow'; G.setup.stability = { state: 'idle' }; }
     G.renderNewWorld();
   };
@@ -199,252 +188,128 @@ window.Trophic = window.Trophic || {};
     });
   };
 
-  G.setFounderTab = function (t) {
-    G.setup.ftab = t;
-    if (t === 'roll' && !G.setup.rolled) G.setup.rolled = T.Gen.rollFounder(G.setup.archetypeId, G.setup.rollSeed);
-    G.renderNewWorld();
-  };
-  G.selectTemplate = function (id) { G.setup.templateId = id; G.setup.ftab = 'templates'; G.renderNewWorld(); };
-  G.selectArchetype = function (id) { G.setup.archetypeId = id; G.setup.rolled = T.Gen.rollFounder(id, G.setup.rollSeed); G.renderNewWorld(); };
-  G.selectCustomLevel = function (lv) { G.setup.customLevel = lv; G.renderNewWorld(); };
-  G.rerollFounder = function () {
-    const st = G.setup;
-    if (st.rerolls >= 3) return;
-    st.rerolls++;
-    st.rollSeed = T.Gen.hashSeed(st.rollSeed, st.rerolls + 7);
-    st.rolled = T.Gen.rollFounder(st.archetypeId, st.rollSeed);
-    T.Audio.cue('click');
-    G.renderNewWorld();
-  };
-
-  G.currentFounder = function () {
-    const st = G.setup;
-    if (st.ftab === 'roll') return st.rolled || (st.rolled = T.Gen.rollFounder(st.archetypeId, st.rollSeed));
-    if (st.ftab === 'custom') {
-      const d = T.Gen.customFounder(st.customLevel);
-      d.name = { herbivore: 'Meadowlings', omnivore: 'Mixlings', carnivore1: 'Duskrunners', carnivore2: 'Gravemaws' }[st.customLevel];
-      return d;
-    }
-    return T.Gen.templateFounder(T.TEMPLATES.find(t => t.id === st.templateId));
+  G.worldName = function (st) {
+    if (st.mode === 'catalog') { const sc = st.scenario ? T.scenarioById(st.scenario) : null; return (sc ? sc.name + ' · ' : 'Sandbox · ') + st.roster.biome.name; }
+    return st.mode === 'generated' ? 'Generated · ' + B.biomes[st.biome].name : st.mode === 'channel' ? 'Open Channel' : 'Temperate Meadow';
   };
 
   G.beginRun = function () {
     const st = G.setup;
+    if (st.stability.state === 'running') return;
     G.cancelGen();
-    const diff = B.difficulties[st.difficulty];
-    const founder = clone(Object.assign({}, G.currentFounder(), { genome: null }));
-    founder.genome = new Float32Array(G.currentFounder().genome);
     const seed = st.mode === 'generated' ? st.worldSeed || st.seed : st.seed;
     const scen = st.mode === 'catalog' && st.scenario ? T.scenarioById(st.scenario) : null;
     const biome = st.mode === 'catalog' ? st.roster.biome : B.biomes[st.mode === 'generated' ? st.biome : st.mode === 'channel' ? 'channel' : 'meadow'];
-    const world = T.createWorld({ seed, roster: st.roster, player: founder, biome, difficulty: diff, debug: G.settings.debug, climateTrend: !!st.climateTrend || !!(scen && scen.climateTrend), primary: !!st.primary });
+    const world = T.createWorld({ seed, roster: st.roster, biome, debug: G.settings.debug,
+      climateTrend: !!st.climateTrend || !!(scen && scen.climateTrend), primary: !!st.primary });
     G.world = world;
-    let mp = diff.startMP;
-    if (st.ftab === 'roll') mp += B.rolledFounderMP;
-    if (st.ftab === 'custom') mp = B.customFounderMP;
-    G.run = {
-      v: T.SAVE_VERSION, seed, mode: st.mode, biome: biome.id, difficulty: st.difficulty, speciesName: founder.name,
-      ecoregion: st.mode === 'catalog' ? st.ecoregion : null, scenario: scen ? scen.id : null, worldName: st.mode === 'catalog' ? (scen ? scen.name + ' · ' : '') + biome.name : null,
-      seedString: st.mode === 'catalog' ? st.roster.seedString : null,
-      founder: { tab: st.ftab, id: st.ftab === 'templates' ? st.templateId : st.ftab === 'roll' ? st.archetypeId : st.customLevel },
-      round: 1, mp, orders: [], mutants: [], championUsed: false, prevMean: null,
-      rivals: [], rivalRecords: {}, collapseCount: 0, apexCount: 0, startProducer: world.producerBiomass(),
-      scoreEU: 0, rivalsDefeatedTotal: 0, activeEvents: [], pendingEvent: null, eventRolledRound: 0, eventThisRound: null,
-      roundStartPop: founder.startPop, outcome: null, history: [], pendingSplit: null, guidedLast: {}, mutantsLast: {},
-      phylo: { lastRound: 1, species: {}, producers: {} },
-    };
-    G.recordPhylo(1);
-    G.updateRivals(true);
-    G.enterEvolve();
-  };
-
-  // ---------- phylogeny records ----------
-
-  const PHYLO_KEYS = T.BUYABLE_GENES.map(d => d.key);
-  function pickMeans(g) { const o = {}; for (const k of PHYLO_KEYS) o[k] = Math.round(g[T.G[k]] * 1000) / 1000; return o; }
-
-  G.recordPhylo = function (round) {
-    const w = G.world, ph = G.run.phylo;
-    ph.lastRound = Math.max(ph.lastRound || 1, round);
-    const pops = w.countPops().count;
-    for (const sp of w.species) {
-      if (sp.transient) continue;
-      let r = ph.species[sp.id];
-      if (!r) r = ph.species[sp.id] = { id: sp.id, name: sp.name, level: sp.level, hue: sp.hue, parentId: sp.parentId, origin: sp.originRound || round, extinct: null,
-        arrival: !!sp.arrival, archetype: sp.archetype, archetypeName: sp.archetypeName, pops: [], means: [], founder: pickMeans(sp.genome), splitDist: sp.splitDist || 0 };
-      r.name = sp.name; r.level = sp.level; r.descendant = !!sp.descendant;
-      r.pops[round] = pops[sp.idx];
-      if (pops[sp.idx] > 0) { r.means[round] = pickMeans(sp.mean); r.latest = r.means[round]; r.genome = Array.from(sp.mean, v => Math.round(v * 1000) / 1000); r.extinct = null; }
-      else if (!r.extinct && r.pops.some(v => v > 0)) r.extinct = round;
-    }
-    const pm = w.producerMeans();
-    w.producers.forEach((P, t) => {
-      if (!P) return;
-      let r = ph.producers[P.id];
-      const m = { growth: pm[t].growth, tough: pm[t].tough, tol: pm[t].tol };
-      if (!r) r = ph.producers[P.id] = { id: P.id, name: P.name, level: 'producer', hue: P.hue, origin: 1, pops: [], means: [], founder: m, archetypeName: T.PRODUCER_KINDS[P.kind].name, kind: P.kind };
-      r.pops[round] = Math.round(pm[t].biomass / 1000);
-      r.tiles = pm[t].n;
-      r.means[round] = m; r.latest = m;
+    G.renderer.fitted = false;
+    const run = St.startRun(world, { scenario: scen ? scen.id : null, difficulty: st.difficulty });
+    Object.assign(run, {
+      v: T.SAVE_VERSION, seed, mode: st.mode, biome: biome.id, ecoregion: st.mode === 'catalog' ? st.ecoregion : null,
+      worldName: G.worldName(st), scenarioName: scen ? scen.name : null, seedString: st.mode === 'catalog' ? st.roster.seedString : null,
+      activeEvents: [], pendingEvent: null, eventRolledRound: 0, eventThisRound: null, report: null,
     });
+    G.run = run;
+    G.enterPlan();
   };
 
-  // ---------- Evolve ----------
+  // ---------- Plan ----------
 
-  G.enterEvolve = function () {
+  G.enterPlan = function () {
     const run = G.run, w = G.world;
-    G.state = 'evolve';
-    G.placing = false;
-    run.orders = [];
-    run.championUsed = false;
-    w.player.pressure = []; w.player.focus = {};
-    for (const e of w.ents) e.champ = false;
+    G.state = 'plan';
+    G.chosen = null;
+    G.paused = true;
     if (run.eventRolledRound !== run.round) {
       run.eventRolledRound = run.round;
       run.pendingEvent = null;
       const blocking = run.activeEvents.some(a => a.left > 0 && (a.id === 'volcanic' || a.id === 'drought'));
-      if (run.round >= B.eventStartRound && !blocking && w.rng.chance(B.eventChance)) run.pendingEvent = w.rng.pick(T.EVENTS).id;
+      // Events with fictional species only come to the fictional worlds.
+      const pool = T.EVENTS.filter(e => !(run.mode === 'catalog' && (e.id === 'invasive' || e.id === 'migration')));
+      if (run.round >= B.eventStartRound && !blocking && w.rng.chance(B.eventChance)) run.pendingEvent = w.rng.pick(pool).id;
     }
     G.save();
-    UI().show('evolve');
-    S().renderEvolve();
+    G.renderer.selected = null;
+    G.renderer.brush = null;
+    G.refreshMarks();
+    UI().show('world');
+    UI().renderActionBar();
+    if (G.settings.hints && run.round === 1) UI().showHint('You are the steward. Pick an action below, click the map to place area actions, and set harvest limits on the right. Then start the season and watch the community respond.');
+    else UI().hideHint();
+    requestAnimationFrame(() => { G.renderer.resize(); if (!G.renderer.fitted) { G.renderer.fit(); G.renderer.fitted = true; } UI().updateHUD(); G.renderer.dirtyTiles = true; G.renderer.draw(w, 1, 0); });
   };
 
-  G.committedMP = function () { return G.run.orders.reduce((a, o) => a + o.cost, 0); };
-  G.guidedOrder = function (key) { return G.run.orders.find(o => o.type === 'guided' && o.gene === key); };
-  G.guidedDelta = function (key) { const o = G.guidedOrder(key); return o ? o.delta : 0; };
-  G.hasOrder = function (type, key) { return G.run.orders.some(o => o.type === type && o.gene === key); };
-  G.hasMutantOrder = function (i) { return G.run.orders.some(o => o.type === 'mutant' && o.idx === i); };
-  G.canAdd = function (type) {
-    const cost = type === 'pressure' ? B.pressureCost : B.focusCost;
-    return G.run.orders.filter(o => o.type === type).length < 2 && G.run.mp - G.committedMP() >= cost;
+  G.chooseAction = function (id) {
+    G.chosen = id;
+    const a = id && St.actionById(id);
+    G.renderer.brush = null;
+    $('world').classList.toggle('placing', !!(a && a.target === 'area'));
+    UI().renderActionBar();
+    T.UI.renderStewardPanel();
   };
-  const guidedCost = (d, delta) => (delta >= 0 ? delta * d.mp : -Math.floor(-delta * d.mp * B.devolveRefund));
 
-  G.canGuided = function (key, dir) {
-    const d = T.GENE_BY_KEY[key], p = G.world.player;
-    const cur = G.guidedDelta(key), next = cur + dir;
-    const target = p.mean[d.i] + next * d.step;
-    if (dir > 0 && target > d.max + 1e-6 && !(d.discrete && p.mean[d.i] + cur * d.step < d.max)) return false;
-    if (dir < 0 && target < d.min - 1e-6 && !(d.discrete && p.mean[d.i] + cur * d.step > d.min)) return false;
-    const extra = guidedCost(d, next) - guidedCost(d, cur);
-    return G.run.mp - G.committedMP() - extra >= 0;
-  };
-  G.guided = function (key, dir) {
-    if (!G.canGuided(key, dir)) return;
-    const d = T.GENE_BY_KEY[key];
-    let o = G.guidedOrder(key);
-    if (!o) { o = { type: 'guided', gene: key, delta: 0, cost: 0 }; G.run.orders.push(o); }
-    o.delta += dir;
-    o.cost = guidedCost(d, o.delta);
-    if (!o.delta) G.run.orders.splice(G.run.orders.indexOf(o), 1);
-    T.Audio.cue(dir > 0 ? 'buy' : 'click');
-    S().renderEvolve();
-  };
-  G.toggleOrder = function (type, key) {
-    const run = G.run;
-    const i = run.orders.findIndex(o => o.type === type && o.gene === key);
-    if (i >= 0) run.orders.splice(i, 1);
-    else if (G.canAdd(type)) run.orders.push({ type, gene: key, cost: type === 'pressure' ? B.pressureCost : B.focusCost });
-    T.Audio.cue('click');
-    S().renderEvolve();
-  };
-  G.toggleMutant = function (i) {
-    const run = G.run, m = run.mutants[i];
-    const k = run.orders.findIndex(o => o.type === 'mutant' && o.idx === i);
-    if (k >= 0) run.orders.splice(k, 1);
-    else if (run.mp - G.committedMP() >= m.price) run.orders.push({ type: 'mutant', idx: i, gene: m.gene, cost: m.price });
+  // Place an area action where the steward clicked.
+  G.placeAt = function (tx, ty) {
+    const a = St.actionById(G.chosen);
+    if (!a || a.target !== 'area') return;
+    const res = St.queue(G.world, G.run, { id: a.id, x: tx, y: ty, r: a.r });
+    if (!res.ok) { UI().toast(res.why, 'bad'); return; }
     T.Audio.cue('buy');
-    S().renderEvolve();
+    UI().toast(a.name + ' queued · ' + res.cost + ' SP');
+    G.refreshMarks();
+    UI().updateHUD();
   };
-  G.removeOrder = function (o) { G.run.orders.splice(G.run.orders.indexOf(o), 1); S().renderEvolve(); };
+  G.queueSpecies = function (id, spId) {
+    const res = St.queue(G.world, G.run, { id, species: spId });
+    if (!res.ok) { UI().toast(res.why, 'bad'); return; }
+    T.Audio.cue('buy');
+    G.chosen = null;
+    UI().renderActionBar();
+    UI().updateHUD();
+  };
+  G.unqueue = function (k) { St.unqueue(G.run, k); G.refreshMarks(); UI().updateHUD(); };
+  G.stopStanding = function (s) {
+    const run = G.run;
+    run.standing.splice(run.standing.indexOf(s), 1);
+    if (s.id === 'protect') G.world.protected.delete(s.species);
+    UI().updateHUD();
+  };
+  G.setHarvest = function (spId, n) {
+    const sp = G.world.speciesById(spId);
+    const max = Math.max(1, Math.round((sp.K || G.world.countPops().count[sp.idx]) / 2));
+    G.run.harvest[spId] = Math.max(0, Math.min(max, Math.round(n || 0)));
+    UI().updateHUD();
+  };
 
-  // One genome with this round's guided shifts (and mutant spreads, halfway) applied.
-  G.applyOrdersTo = function (g) {
-    const out = new Float32Array(g);
-    for (const o of G.run.orders) {
-      const d = T.GENE_BY_KEY[o.gene];
-      if (o.type === 'guided') out[d.i] = T.clampGene(d.i, out[d.i] + o.delta * d.step);
-    }
-    return out;
+  G.refreshMarks = function () {
+    const COL = { Habitat: 'rgba(94,158,69,0.95)', Wildlife: 'rgba(29,101,112,0.95)' };
+    G.renderer.planMarks = G.run.queue.filter(q => q.x != null).map(q => { const a = St.actionById(q.id); return { x: q.x, y: q.y, r: q.r || a.r, color: COL[a.cat], label: a.name }; });
   };
-  G.draftMean = function () {
-    const p = G.world.player;
-    const g = G.applyOrdersTo(p.mean);
-    for (const o of G.run.orders) if (o.type === 'mutant') { const m = G.run.mutants[o.idx]; const i = T.G[m.gene]; g[i] = (g[i] + Math.max(g[i], m.value)) / 2; }
-    return g;
-  };
+
+  // ---------- Season ----------
 
   G.startSeason = function () {
-    const run = G.run, w = G.world, p = w.player;
-    const committed = G.committedMP();
-    if (committed > run.mp) return;
-    run.guidedLast = {}; run.mutantsLast = {};
-    const pressure = [];
-    p.focus = {};
-    for (const o of run.orders) {
-      if (o.type === 'guided') { T.Evo.applyGuided(w, p, o.gene, o.delta); run.guidedLast[o.gene] = o.delta; }
-      else if (o.type === 'mutant') { const m = run.mutants[o.idx]; T.Evo.applyMutant(w, p, m.gene, m.value); run.mutantsLast[m.gene] = true; }
-      else if (o.type === 'pressure') pressure.push(o.gene);
-      else if (o.type === 'focus') p.focus[T.G[o.gene]] = 3;
-    }
-    run.mp -= committed;
-    run.orders = [];
-    p.name = run.speciesName;
-    w.restatSpecies(p);
-    T.Evo.setPressure(w, p, pressure);
-    G.updateRivals(false);
+    const run = G.run, w = G.world;
     w.beginRound(run.round);
-    run.roundStartPop = w.countPops().count[p.idx];
+    St.startSeason(w, run);   // after the round starts, so releases count as immigration (I) this round
     run.eventThisRound = null;
     if (run.pendingEvent) { G.applyEvent(run.pendingEvent); run.eventThisRound = { id: run.pendingEvent }; run.pendingEvent = null; }
     G.applyEventMods();
     G.state = 'simulate';
+    G.chosen = null;
+    $('world').classList.remove('placing');
+    G.renderer.planMarks = [];
+    G.renderer.brush = null;
     G.acc = 0;
     G.paused = false;
     if (!G.speed) G.speed = 1;
-    G.renderer.selected = null;
     G.renderer.dirtyTiles = true;
     G.lastPops = w.countPops().count;
-    G.starveWarned = false;
-    UI().show('world');
-    const tip = T.TUTORIAL[run.round];
-    if (G.settings.hints && tip) UI().showHint(tip.sim); else UI().hideHint();
-    requestAnimationFrame(() => { G.renderer.resize(); G.renderer.fit(); UI().updateHUD(); });
-  };
-
-  // ---------- rivals ----------
-
-  G.updateRivals = function (initial) {
-    const w = G.world, run = G.run, p = w.player;
-    const pops = w.countPops().count;
-    const names = {};
-    w.producers.forEach(P => { if (P) names[P.id] = P.name; });
-    names.fruit = 'fruit'; names.carrion = 'carrion';
-    const scored = [];
-    for (const sp of w.species) {
-      if (sp.isPlayer || sp.level === 'decomposer' || sp.transient) continue;
-      const rec = run.rivalRecords[sp.id];
-      if (pops[sp.idx] === 0 && !rec) continue;
-      let score = 0;
-      const why = [];
-      const shared = [...p.foods].filter(f => sp.foods.has(f));
-      if (shared.length) { score += shared.length; why.push('eats ' + shared.map(f => names[f] || f).join(', ')); }
-      const prey = w.species.filter(x => x !== p && x !== sp && w.edible[p.idx][x.idx] && w.edible[sp.idx][x.idx]);
-      if (prey.length) { score += 1.5 * prey.length; why.push('hunts ' + prey.map(x => x.name).join(', ')); }
-      if (w.edible[sp.idx][p.idx] || (w.round <= B.predatorGraceRounds && sp.stats.canMeat && sp.preyLevels.has(p.level))) { score += 3; why.push('preys on you'); }
-      if (sp.descendant && !shared.length) continue;   // descendants are only rivals if they compete for food
-      if (score >= 1) scored.push({ sp, score, why: why.join(' · ') });
-    }
-    scored.sort((a, b) => b.score - a.score);
-    const before = run.rivals.map(r => r.id).join();
-    run.rivals = scored.slice(0, 6).map(({ sp, why }) => {
-      let r = run.rivalRecords[sp.id];
-      if (!r) r = run.rivalRecords[sp.id] = { id: sp.id, name: sp.name, startPop: Math.max(1, pops[sp.idx]), low: 0, defeated: pops[sp.idx] === 0, defeatedRound: 0 };
-      r.why = why; r.name = sp.name;
-      return r;
-    });
-    if (!initial && before !== run.rivals.map(r => r.id).join()) UI().toast('Your niche shifted: rival list updated.');
+    UI().hideHint();
+    UI().renderActionBar();
+    if (run.lastLog.length) UI().toast(run.lastLog.join(' · '));
+    UI().updateHUD();
   };
 
   // ---------- events ----------
@@ -475,66 +340,22 @@ window.Trophic = window.Trophic || {};
     w.ectoSlowAll = act.includes('volcanic');
   };
 
-  // ---------- Simulate ----------
-
   G.setSpeed = function (s) {
+    if (G.state !== 'simulate') return;
     if (s === 0) { G.paused = !G.paused; if (!G.paused && !G.speed) G.speed = 1; }
     else { G.speed = s; G.paused = false; }
     T.Audio.cue('click');
-    if (G.state === 'simulate') UI().updateHUD();
-  };
-
-  G.issueDirective = function (id) {
-    if (G.state !== 'simulate') return;
-    const w = G.world;
-    const d = T.DIRECTIVES.find(x => x.id === id);
-    if (id === 'hunt' && !w.player.stats.canMeat) { UI().toast('Your species cannot digest meat yet.'); return; }
-    if (w.activeDirective() === id) return;
-    if (!w.issueDirective(id)) { UI().toast(d.name + ' ready in ' + Math.ceil((w.directiveReady[id] - w.t) / B.ticksPerSecond) + ' s'); return; }
-    T.Audio.cue('click');
-    UI().toast(id === 'isolate' ? 'Isolated ' + w.lastIsolated + ' individuals: they now only mate inside their group.' : 'Directive: ' + d.name);
     UI().updateHUD();
-  };
-
-  G.togglePlacing = function () {
-    if (G.state !== 'simulate') return;
-    G.placing = !G.placing;
-    $('world').classList.toggle('placing', G.placing);
-    UI().updateHUD();
-  };
-  G.placeMarker = function (tx, ty) {
-    const N = B.worldSize;
-    G.world.marker = { x: Math.max(0.5, Math.min(N - 0.5, tx)), y: Math.max(0.5, Math.min(N - 0.5, ty)) };
-    for (const e of G.world.ents) if (e.sp.isPlayer) e.think = 0;
-    G.placing = false;
-    $('world').classList.remove('placing');
-    T.Audio.cue('click');
-    UI().updateHUD();
-  };
-  G.clearMarker = function () { G.world.marker = null; UI().updateHUD(); };
-
-  G.champion = function (e) {
-    const run = G.run;
-    if (run.championUsed || run.mp < B.championCost || !e.alive || e.grow < 1) return;
-    run.mp -= B.championCost;
-    run.championUsed = true;
-    e.champ = true;
-    T.Audio.cue('buy');
-    UI().toast(e.sp.name + ' #' + String(e.num).padStart(4, '0') + ' is your Champion: first pick of mates, stronger young.', 'good');
-    UI().renderInspector();
-  };
-  G.cull = function (e) {
-    if (G.world.cull(e)) { T.Audio.cue('kill'); UI().toast('Culled #' + String(e.num).padStart(4, '0') + '. Its genes leave the pool.'); G.renderer.selected = null; UI().renderInspector(); }
   };
 
   G.frame = function (now) {
     requestAnimationFrame(G.frame);
     const dt = Math.min(0.1, (now - (G.last || now)) / 1000);
     G.last = now;
-    if (G.state !== 'simulate' || !G.world) return;
+    if ((G.state !== 'simulate' && G.state !== 'plan') || !G.world) return;
     const w = G.world;
     panKeys(dt);
-    if (!G.paused && !G.menuOpen) {
+    if (G.state === 'simulate' && !G.paused && !G.menuOpen) {
       G.acc += dt * B.ticksPerSecond * G.speed;
       let n = 0;
       const t0 = performance.now();
@@ -542,210 +363,94 @@ window.Trophic = window.Trophic || {};
         w.tick();
         G.acc -= 1; n++;
         if (w.roundTick % 10 === 0) G.watchPops();
-        if (w.roundOver() || G.playerCount() === 0) break;
+        if (w.roundOver()) break;
       }
       if (n) G.tickMs = G.tickMs * 0.9 + ((performance.now() - t0) / n) * 0.1;
       if (G.acc > 24) G.acc = 0;
-      if (w.roundOver() || G.playerCount() === 0) { G.renderer.consumeEvents(w); G.endRound(); return; }
+      if (w.roundOver()) { G.renderer.consumeEvents(w); G.endRound(); return; }
     }
-    for (const ev of w.events) {
-      if (ev.player && ev.type === 'bite') T.Audio.cue('bite');
-      else if (ev.type === 'kill') T.Audio.cue('kill');
-      else if (ev.type === 'birth' && ev.player) T.Audio.cue('birth');
-    }
+    for (const ev of w.events) if (ev.type === 'kill') T.Audio.cue('kill');
     G.renderer.consumeEvents(w);
+    // The brush follows the pointer while placing an area action.
+    const a = G.state === 'plan' && G.chosen && St.actionById(G.chosen);
+    if (a && a.target === 'area' && G.mouse.inside) {
+      const [wx, wy] = G.renderer.screenToWorld(G.mouse.x, G.mouse.y);
+      G.renderer.brush = { x: wx / B.tilePx, y: wy / B.tilePx, r: a.r, color: 'rgba(31,42,36,0.9)', fill: 'rgba(245,197,66,0.18)', label: a.name + ' · ' + St.cost(w, a, { x: wx / B.tilePx, y: wy / B.tilePx, r: a.r }) + ' SP' };
+    } else G.renderer.brush = null;
     G.renderer.draw(w, G.paused ? 1 : Math.min(1, G.acc), G.paused ? 0 : dt);
     if (!G.hudT || now - G.hudT > 250) {
       G.hudT = now;
-      if (w.t % 60 < 30) w.updateMeans(w.player);
       UI().updateHUD();
       UI().renderInspector();
       T.Audio.setSeason(w.seasonIdx);
     }
   };
 
-  G.playerCount = function () {
-    let n = 0;
-    for (const e of G.world.ents) if (e.alive && e.sp.isPlayer) n++;
-    return n;
-  };
-
   G.watchPops = function () {
     const w = G.world, pops = w.countPops().count, prev = G.lastPops || pops;
     w.species.forEach((sp, i) => {
-      if (prev[i] > 0 && pops[i] === 0 && !sp.transient) {
-        UI().toast(T.UI.plural(sp.name) + ' are extinct.', sp.isPlayer ? 'bad' : 'good');
-        if (!sp.isPlayer && G.run.rivals.some(r => r.id === sp.id)) T.Audio.cue('rival');
-      }
+      if (prev[i] > 0 && pops[i] === 0 && !sp.transient) UI().toast(T.UI.plural(sp.name) + ' have died out here.', 'bad');
     });
     G.lastPops = pops;
-    const p = w.player;
-    let e = 0, n = 0;
-    for (const x of w.ents) if (x.alive && x.sp === p) { e += x.E / x.st.maxE; n++; }
-    if (n && e / n < 0.25 && !G.starveWarned) {
-      G.starveWarned = true;
-      T.Audio.cue('starve');
-      UI().toast('Your species is starving. Try Forage, or move your territory to fresh food.', 'bad');
-    }
   };
 
-  // ---------- round end / Selection report ----------
+  // ---------- Report ----------
 
   G.endRound = function () {
     const w = G.world, run = G.run;
-    const diff = B.difficulties[run.difficulty];
     G.state = 'report';
-    G.placing = false;
-    for (const e of w.ents) if (e.alive && e.sp.transient) { w.ledger.exported += e.E + e.tissue; w.nledger.exported += e.nT + e.nS; e.E = 0; e.tissue = 0; e.nT = 0; e.nS = 0; e.alive = false; }
+    for (const e of w.ents) if (e.alive && e.sp.transient) { w.ledger.exported += e.E + e.tissue + e.para; w.nledger.exported += e.nT + e.nS; e.E = 0; e.tissue = 0; e.para = 0; e.nT = 0; e.nS = 0; e.alive = false; }
     w.ents = w.ents.filter(e => e.alive);
     w.updateMeans();
-    const p = w.player;
-    const pops = w.countPops();
-    const pPop = pops.count[p.idx], pE = pops.energy[p.idx];
-    const rs = w.rstats[p.idx];
-
-    // rivals
-    const defeatedNow = [];
-    for (const r of run.rivals) {
-      if (r.defeated) continue;
-      const sp = w.speciesById(r.id);
-      const n = sp ? pops.count[sp.idx] : 0;
-      if (n === 0) r.defeated = true;
-      else if (n < B.rivalDefeatFrac * r.startPop) { r.low++; if (r.low >= B.rivalDefeatRounds) r.defeated = true; }
-      else r.low = 0;
-      if (r.defeated) { r.defeatedRound = run.round; defeatedNow.push(r.name); }
-    }
-    run.rivalsDefeatedTotal += defeatedNow.length;
-
-    // MP
-    const parts = [['Base', B.mpBase], ['Offspring ' + rs.births + ' ÷ ' + B.mpPerOffspring, Math.floor(rs.births / B.mpPerOffspring)],
-      ['Banked ' + T.UI.fmt(pE) + ' EU ÷ ' + T.UI.fmt(B.mpEnergyDivisor), Math.floor(pE / B.mpEnergyDivisor)]];
-    for (const n of defeatedNow) parts.push(['Rival defeated: ' + n, B.mpPerRival]);
-    let raw = parts.reduce((a, b) => a + b[1], 0);
-    if (raw > B.mpCap) { parts.push(['Cap (' + B.mpCap + ')', B.mpCap - raw]); raw = B.mpCap; }
-    if (pPop > 0 && pPop < run.roundStartPop) { parts.push(['Adaptive pressure', B.mpAdaptive]); raw += B.mpAdaptive; }
-    run.scoreEU += rs.assimilated;
-
-    // outcome
-    const pyr = w.pyramid();
-    const share = pyr.levels[p.level] > 0 ? pyr.player[p.level] / pyr.levels[p.level] : 0;
-    const consumers = pyr.levels.herbivore + pyr.levels.omnivore + pyr.levels.carnivore1 + pyr.levels.carnivore2;
-    let descE = 0;
-    for (const lv in pyr.descendant) if (lv !== 'producer' && lv !== 'decomposer') descE += pyr.descendant[lv];
-    const apexShare = consumers > 0 ? (pE + B.descendantShare * descE) / consumers : 0;
-    run.apexCount = apexShare >= B.apexShare ? run.apexCount + 1 : 0;
-    run.collapseCount = w.producerBiomass() < B.collapseFrac * run.startProducer ? run.collapseCount + 1 : 0;
-    let outcome = null;
-    const allRivals = run.rivals.length > 0 && run.rivals.every(r => r.defeated);
-    if (pPop === 0) outcome = { win: false, kind: 'extinction', headline: 'Extinction. ' + p.name + ' have died out.' };
-    else if (run.collapseCount >= B.collapseRounds) outcome = { win: false, kind: 'collapse', headline: 'Collapse. Producers fell below 15% for two rounds and the pyramid starved.' };
-    else if (allRivals && share >= B.dominanceShare) outcome = { win: true, kind: 'dominance', headline: 'Dominance victory! Every rival is defeated and you hold ' + Math.round(share * 100) + '% of your level.' };
-    else if (run.apexCount >= B.apexRounds) outcome = { win: true, kind: 'apex', headline: 'Apex victory! Your lineage held half of all consumer biomass for three rounds.' };
-    else if (run.round >= B.maxRounds) outcome = { win: false, kind: 'time', headline: 'Round limit reached without victory.' };
-
-    const notes = w.notes.splice(0);
-    if (allRivals && !outcome) notes.push('All rivals defeated, but you hold only ' + Math.round(share * 100) + '% of your trophic level (need ' + Math.round(B.dominanceShare * 100) + '%).');
-    if (run.apexCount > 0 && !outcome) notes.push('Apex progress: ' + run.apexCount + '/' + B.apexRounds + ' rounds holding half of consumer biomass.');
-    if (run.collapseCount > 0 && !outcome) notes.push('Warning: producer biomass is below 15% of its starting value. One more round like this and the ecosystem collapses.');
-
-    // evolution between rounds
-    const evolved = T.Evo.whatEvolved(w, { guided: run.guidedLast, mutants: run.mutantsLast }).map(x => Object.assign(x, { hue: (w.species.find(s => s.name === x.species) || {}).hue || 0 }));
-    run.mutants = outcome ? [] : T.Evo.findMutants(w, p);
-    run.prevMean = Array.from(w.roundStartMeans[p.idx] || p.mean);
-    const extinct = w.species.filter(s => !s.transient && w.rstats[s.idx].startPop > 0 && pops.count[s.idx] === 0).map(s => s.name);
-    const speciation = [];
-    if (!outcome) {
-      for (const ev of T.Evo.checkSpeciation(w, run.round)) {
-        speciation.push({ parentId: ev.parent.id, childId: ev.child.id, dist: ev.dist, nParent: ev.nParent, nChild: ev.nChild, player: ev.player });
-        if (ev.player) run.pendingSplit = { parentId: ev.parent.id, childId: ev.child.id };
-        T.Audio.cue('rival');
-      }
-    }
-    for (const a of run.activeEvents) a.left--;
-    run.activeEvents = run.activeEvents.filter(a => a.left > 0);
-    G.recordPhylo(run.round);
-
-    const lines = [{ idx: p.idx, name: p.name, level: p.level, hue: p.hue, player: true, start: w.rstats[p.idx].startPop, end: pPop }];
-    for (const r of run.rivals.slice(0, 5)) {
-      const sp = w.speciesById(r.id);
-      if (sp) lines.push({ idx: sp.idx, name: sp.name, level: sp.level, hue: sp.hue, start: w.rstats[sp.idx].startPop, end: pops.count[sp.idx] });
-    }
-    // This round's interactions, and the keystone tests, which fork the world and report during the next season.
+    w._demographyRoundEnd();
     const inter = w._interactionsRoundEnd();
+    run.extinct = run.extinct || [];
+    const res = St.endRound(w, run);
+    const pops = w.countPops().count;
+    // The biggest movers for the population chart.
+    const lines = w.species.filter(sp => !sp.transient && w.rstats[sp.idx].startPop > 0)
+      .map(sp => ({ idx: sp.idx, name: sp.name, level: sp.level, hue: sp.hue, start: w.rstats[sp.idx].startPop, end: pops[sp.idx] }))
+      .sort((a, b) => Math.abs(Math.log((b.end + 1) / (b.start + 1))) - Math.abs(Math.log((a.end + 1) / (a.start + 1)))).slice(0, 6);
     const ks = { running: true, total: 0, done: [] };
-    if (T.KeystoneRunner) {
+    const report = run.report = {
+      round: run.round, ehi: res.ehi, deltas: res.deltas, goals: res.goals, income: res.income, parts: res.parts, outcome: res.outcome, gone: res.gone,
+      interactions: inter ? JSON.parse(JSON.stringify(inter)) : null, keystone: ks, notes: w.notes.splice(0),
+      demography: JSON.parse(JSON.stringify(w.demography || [])), energy: SU().combinedStats(w), lines,
+      history: { t: w.history.t.slice(), pops: w.history.pops.map(r => r.slice()) },
+    };
+    // Keystone tests fork the world and report during the next season.
+    if (T.KeystoneRunner && !res.outcome) {
       const round = run.round;
-      T.KeystoneRunner.start(w, (res, job) => {
-        ks.total = job.items.length; ks.done.push(res);
+      T.KeystoneRunner.start(w, (r, job) => {
+        ks.total = job.items.length; ks.done.push(r);
         ks.running = job.done.length < job.items.length;
-        T.keystoneRecord(G.world, res, round);
-        if (res.keystone) UI().toast('Keystone found: ' + res.name + '. Without it, diversity dropped ' + Math.round(res.drop * 100) + '%.', 'good');
+        T.keystoneRecord(G.world, r, round);
+        if (r.keystone) UI().toast('Keystone found: ' + r.name + '. Without it, diversity dropped ' + Math.round(r.drop * 100) + '%.', 'good');
         if (G.state === 'report' && G.run.report === report) S().renderInteractions(report);
       });
       ks.total = T.KeystoneRunner.job ? T.KeystoneRunner.job.items.length : 0;
     }
-    const report = run.report = {
-      interactions: inter ? JSON.parse(JSON.stringify(inter)) : null, keystone: ks,
-      round: run.round, playerName: p.name, rs: clone(Object.assign({}, rs, { birthMids: [] })), mpParts: parts, mpTotal: raw,
-      outcome, evolved, defeatedNow, extinct, speciation, notes, lines,
-      history: { t: w.history.t.slice(), pops: w.history.pops.map(r => r.slice()) },
-    };
-    run.history.push({ round: run.round, pop: pPop, mp: raw, share });
-    if (outcome) run.outcome = outcome;
-    else run.mp += raw;
-    if (defeatedNow.length) T.Audio.cue('rival');
-    if (pPop === 0) T.Audio.cue('extinct');
-    T.Audio.setSeason(0, pPop < run.roundStartPop ? -1 : 1);
+    for (const a of run.activeEvents) a.left--;
+    run.activeEvents = run.activeEvents.filter(a => a.left > 0);
+    if (res.gone.length) T.Audio.cue('extinct');
     UI().show('report');
-    requestAnimationFrame(() => S().renderReport(run.report));
+    requestAnimationFrame(() => S().renderReport(report));
   };
-
-  G.chooseBranch = function (keepChild) {
-    const run = G.run, w = G.world;
-    const ps = run.pendingSplit;
-    if (!ps) return;
-    const parent = w.speciesById(ps.parentId), child = w.speciesById(ps.childId);
-    if (keepChild) {
-      T.Evo.swapPlayerBranch(w, { parent, child });
-      run.speciesName = child.name;
-      UI().toast('You now guide ' + child.name + '. ' + parent.name + ' continue as a Descendant species.', 'good');
-    } else {
-      child.descendant = true;
-      UI().toast(child.name + ' go their own way as a Descendant species.', 'good');
-    }
-    run.pendingSplit = null;
-    run.mutants = T.Evo.findMutants(w, w.player);
-    G.recordPhylo(run.round);
-    G.updateRivals(false);
-    S().renderReport(run.report);
-  };
+  const SU = () => T.StewardUI;
 
   G.continueFromReport = function () {
     const run = G.run;
-    if (run.pendingSplit) return;
     if (run.outcome) { G.showEnd(); return; }
     run.round++;
     G.world.round = run.round;
     G.world.rebuildDiet();
-    G.enterEvolve();
+    G.enterPlan();
   };
 
   G.showEnd = function () {
-    const run = G.run, diff = B.difficulties[run.difficulty];
-    const o = run.outcome;
-    const euPts = Math.round(run.scoreEU / B.scoreEnergyDivisor);
-    const rivalPts = run.rivalsDefeatedTotal * B.scorePerRival;
-    const winPts = o.win ? B.scoreVictory : 0;
-    const roundPts = -run.round * B.scorePerRound;
-    const score = Math.max(0, Math.round((euPts + rivalPts + winPts + roundPts) * diff.scoreMult));
-    const titles = { dominance: 'Dominance', apex: 'Apex', extinction: 'Extinction', collapse: 'Collapse', time: 'Out of time' };
-    S().renderEnd({
-      round: run.round, difficulty: diff.name, title: titles[o.kind], sub: o.headline, score,
-      rows: [['Energy assimilated (' + T.UI.fmt(run.scoreEU) + ' EU ÷ ' + B.scoreEnergyDivisor + ')', T.UI.fmt(euPts)],
-        ['Rivals defeated (' + run.rivalsDefeatedTotal + ' × ' + B.scorePerRival + ')', T.UI.fmt(rivalPts)],
-        ['Victory bonus', T.UI.fmt(winPts)], ['Rounds used (' + run.round + ' × −' + B.scorePerRound + ')', T.UI.fmt(roundPts)],
-        ['Difficulty multiplier', '×' + diff.scoreMult]],
-    });
+    const run = G.run, o = run.outcome, sc = St.score(run), diff = B.difficulties[run.difficulty];
+    if (T.KeystoneRunner) T.KeystoneRunner.cancel();
+    S().renderEnd({ round: run.round, difficulty: diff.name, title: o.win ? 'Restored' : o.kind === 'collapse' ? 'Collapse' : 'Out of time', sub: o.headline, score: sc.total, rows: sc.rows });
     removeKey(SAVE_KEY);
     G.state = 'end';
     UI().show('end');
@@ -755,19 +460,17 @@ window.Trophic = window.Trophic || {};
 
   G.openOverlay = function (name, id) {
     if (!G.run) return;
-    if (G.state !== 'phylogeny' && G.state !== 'codex') G.overlayReturn = G.state;
+    if (G.state !== 'codex') G.overlayReturn = G.state;
     G.state = name;
     UI().show(name);
-    if (name === 'phylogeny') S().renderPhylogeny(id);
-    else S().renderCodex(id);
+    S().renderCodex(id);
   };
   G.closeOverlay = function () {
-    const back = G.overlayReturn || 'evolve';
+    const back = G.overlayReturn || 'plan';
     G.state = back;
-    if (back === 'evolve') { UI().show('evolve'); S().renderEvolve(); }
-    else if (back === 'report') { UI().show('report'); S().renderReport(G.run.report); }
+    if (back === 'report') { UI().show('report'); S().renderReport(G.run.report); }
     else if (back === 'end') UI().show('end');
-    else UI().show(back === 'simulate' ? 'world' : back);
+    else { UI().show('world'); UI().renderActionBar(); requestAnimationFrame(() => { G.renderer.resize(); UI().updateHUD(); }); }
   };
 
   // ---------- save / load ----------
@@ -804,9 +507,8 @@ window.Trophic = window.Trophic || {};
       G.world = w;
       G.run = data.run;
       w.round = G.run.round;
-      w.player.name = G.run.speciesName;
       w.rebuildDiet();
-      G.enterEvolve();
+      G.enterPlan();
       UI().toast('Save loaded: round ' + G.run.round, 'good');
     } catch (e) {
       console.error(e);
@@ -819,7 +521,7 @@ window.Trophic = window.Trophic || {};
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'keystone-' + (G.run.speciesName || 'run').replace(/\W+/g, '-').toLowerCase() + '-round-' + data.run.round + '.json';
+    a.download = 'keystone-' + (G.run.worldName || 'run').replace(/\W+/g, '-').toLowerCase() + '-round-' + data.run.round + '.json';
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
@@ -872,19 +574,19 @@ window.Trophic = window.Trophic || {};
   function bindInput() {
     const cv = $('world');
     const ptrs = new Map();
-    let drag = null, pinch = null, longPress = null;
+    let drag = null, pinch = null;
+    const onMap = () => G.state === 'simulate' || G.state === 'plan';
     const local = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-    const placeAt = (x, y) => { const [wx, wy] = G.renderer.screenToWorld(x, y); G.placeMarker(wx / B.tilePx, wy / B.tilePx); };
+    const placing = () => G.state === 'plan' && G.chosen && St.actionById(G.chosen).target === 'area';
     cv.addEventListener('contextmenu', e => e.preventDefault());
     cv.addEventListener('pointerdown', e => {
-      if (G.state !== 'simulate') return;
+      if (!onMap()) return;
       cv.setPointerCapture(e.pointerId);
       const [x, y] = local(e);
       ptrs.set(e.pointerId, { x, y });
-      if (e.button === 2) { placeAt(x, y); return; }
-      if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) }; drag = null; clearTimeout(longPress); return; }
+      if (e.button === 2) { if (placing()) G.chooseAction(null); return; }
+      if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) }; drag = null; return; }
       drag = { x, y, cx: G.renderer.cam.x, cy: G.renderer.cam.y, moved: false };
-      if (e.pointerType === 'touch') longPress = setTimeout(() => { if (drag && !drag.moved) { placeAt(x, y); drag = null; } }, 550);
     });
     cv.addEventListener('pointermove', e => {
       const [x, y] = local(e);
@@ -900,18 +602,18 @@ window.Trophic = window.Trophic || {};
       }
       if (drag) {
         const dx = x - drag.x, dy = y - drag.y;
-        if (!drag.moved && Math.hypot(dx, dy) > 5) { drag.moved = true; cv.classList.add('dragging'); clearTimeout(longPress); }
+        if (!drag.moved && Math.hypot(dx, dy) > 5) { drag.moved = true; cv.classList.add('dragging'); }
         if (drag.moved) { G.renderer.cam.x = drag.cx - dx / G.renderer.cam.zoom; G.renderer.cam.y = drag.cy - dy / G.renderer.cam.zoom; G.renderer.clampCam(); }
       }
     });
     const up = e => {
       ptrs.delete(e.pointerId);
-      clearTimeout(longPress);
       cv.classList.remove('dragging');
       if (ptrs.size < 2) pinch = null;
-      if (drag && !drag.moved && e.button !== 2 && G.state === 'simulate') {
+      if (drag && !drag.moved && e.button !== 2 && onMap()) {
         const [x, y] = local(e);
-        if (G.placing) placeAt(x, y);
+        const [wx, wy] = G.renderer.screenToWorld(x, y);
+        if (placing()) G.placeAt(wx / B.tilePx, wy / B.tilePx);
         else {
           const hit = G.renderer.pick(G.world, x, y);
           G.renderer.selected = hit;
@@ -925,7 +627,7 @@ window.Trophic = window.Trophic || {};
     cv.addEventListener('pointercancel', up);
     cv.addEventListener('pointerleave', () => { G.mouse.inside = false; });
     cv.addEventListener('wheel', e => {
-      if (G.state !== 'simulate') return;
+      if (!onMap()) return;
       e.preventDefault();
       const [x, y] = local(e);
       G.renderer.zoomAt(x, y, Math.exp(-e.deltaY * 0.0015));
@@ -936,19 +638,17 @@ window.Trophic = window.Trophic || {};
       const k = e.key.toLowerCase();
       if (k === 'escape') {
         if (G.menuOpen) G.closeMenu();
-        else if (G.state === 'phylogeny' || G.state === 'codex') G.closeOverlay();
-        else if (G.state === 'simulate' && G.renderer.selected) { G.renderer.selected = null; UI().renderInspector(); }
+        else if (G.state === 'codex') G.closeOverlay();
+        else if (G.chosen) G.chooseAction(null);
+        else if (onMap() && G.renderer.selected) { G.renderer.selected = null; UI().renderInspector(); }
         else G.openMenu();
         return;
       }
-      if (G.state !== 'simulate' || G.menuOpen) return;
+      if (!onMap() || G.menuOpen) return;
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { G.keys[k] = true; e.preventDefault(); return; }
       if (k === ' ') { e.preventDefault(); G.setSpeed(0); return; }
       if (k === '+' || k === '=') { G.setSpeed(G.paused ? G.speed || 1 : Math.min(4, (G.speed || 1) * 2)); return; }
-      if (k === '-' || k === '_') { if (G.speed <= 1) G.setSpeed(0); else G.setSpeed(G.speed / 2); return; }
-      if (k === 't') { if (G.mouse.inside) placeAt(G.mouse.x, G.mouse.y); else G.togglePlacing(); return; }
-      const d = T.DIRECTIVES.find(x => x.key === k);
-      if (d) G.issueDirective(d.id);
+      if (k === '-' || k === '_') { if (G.speed <= 1) G.setSpeed(0); else G.setSpeed(G.speed / 2); }
     });
     window.addEventListener('keyup', e => { G.keys[e.key.toLowerCase()] = false; });
     window.addEventListener('blur', () => { G.keys = {}; });

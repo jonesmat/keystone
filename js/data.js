@@ -134,27 +134,6 @@ window.Trophic = window.Trophic || {};
       behavior: 'Migrating herd crossing the map.', weakness: 'Leaves at the far edge.' },
   };
 
-  // Phase 1 founder templates (still offered on the New world screen).
-  T.TEMPLATES = [
-    { id: 'grazer', name: 'Grazer', level: 'herbivore', niche: 'Herbivore', startPop: 20, strength: 'Huge energy base', risk: 'Hunted by everything',
-      base: { speed: 0.15, sight: 6 }, genome: { size: 3, diet: 0, speed: 1, senses: 1, plantGut: 1, social: 2, repro: 3, cohesion: 0.7 } },
-    { id: 'opportunist', name: 'Opportunist', level: 'omnivore', niche: 'Omnivore', startPop: 12, strength: 'Flexible diet', risk: 'Mediocre digestion',
-      base: { speed: 0.15, sight: 6 }, genome: { size: 3, diet: 5, senses: 1, bite: 1, speed: 1, repro: 5 } },
-    { id: 'hunter', name: 'Hunter', level: 'carnivore1', niche: 'Carnivore', startPop: 8, strength: 'Strong offense', risk: 'Depends on prey numbers',
-      base: { speed: 0.17, sight: 7 }, genome: { size: 4, diet: 9, bite: 2, speed: 2, meatGut: 1, social: 1, repro: 6, coat: 2, tail: 2 } },
-    { id: 'tyrant', name: 'Tyrant', level: 'carnivore2', niche: 'Apex', startPop: 3, strength: 'Kills anything', risk: 'Tiny, fragile population (hard mode)',
-      base: { speed: 0.14, sight: 8, apex: true }, genome: { size: 11, diet: 10, bite: 3, armor: 1, repro: 9, longevity: 5, head: 2, tail: 3 } },
-  ];
-
-  T.DIRECTIVES = [
-    { id: 'forage',  key: '1', name: 'Forage',  desc: 'Prioritise eating; ignore distant threats.' },
-    { id: 'hunt',    key: '2', name: 'Hunt',    desc: 'Seek prey aggressively, including larger prey.' },
-    { id: 'hide',    key: '3', name: 'Hide',    desc: 'Freeze in cover: +40% camouflage, no eating.' },
-    { id: 'migrate', key: '4', name: 'Migrate', desc: 'Travel to the territory marker.' },
-    { id: 'swarm',   key: '5', name: 'Swarm',   desc: 'Gather at the marker and defend each other.' },
-    { id: 'isolate', key: '6', name: 'Isolate', desc: 'Your individuals inside the marker only mate with each other, to encourage a split.' },
-  ];
-
   T.EVENTS = [
     { id: 'drought',  name: 'Drought',          effect: 'Sunlight −30% for 1 round. High-upkeep individuals will starve first.', chip: 'sunlight −30%', rounds: 1 },
     { id: 'volcanic', name: 'Volcanic winter',  effect: 'Sunlight −50% for 2 rounds; ectotherms slowed all round.', chip: 'sunlight −50%', rounds: 2 },
@@ -166,17 +145,6 @@ window.Trophic = window.Trophic || {};
     { id: 'flood',    name: 'Flood',            effect: 'Low ground loses its growth and is waterlogged, so it denitrifies for a while.', chip: 'flood', rounds: 0 },
     { id: 'windthrow', name: 'Windstorm',       effect: 'Scattered shrubs and trees fall, opening light gaps.', chip: 'light gaps', rounds: 0 },
   ];
-
-  T.TUTORIAL = {
-    1: { evolve: 'Every creature runs on energy (EU). Sunlight feeds producers, and your species eats to capture a share of it. Queue orders with Mutation Points, then start the season.',
-         sim: 'Producers store about 10% of the sunlight that reaches them. The pyramid on the left shows the energy flowing into each level — each step up gets far less. Click any creature to inspect its genes.' },
-    2: { evolve: 'Upkeep: every trait costs EU every tick. The meter shows the spread of your individuals — the costliest starve first when food runs short.',
-         sim: 'Directives (keys 1–6) steer your species. Place a territory marker with right-click, the T key, or a long-press on touch screens.' },
-    3: { evolve: 'Rivals share your food or hunt you. Defeat them by out-eating, out-hunting or starving them — but if producers collapse, the whole pyramid starves with them.',
-         sim: 'A rival is defeated when it goes extinct or stays below 10% of its starting population for 2 rounds.' },
-    4: { evolve: 'Your individuals are not identical. Each histogram shows how a gene varies across the population. Pin a gene to favour its top 25% as breeders, or buy a real mutant from the tray.',
-         sim: 'Selection is happening now: the individuals that eat and survive pass on their genes. Turn on Variation tint to see who is fast and who is slow.' },
-  };
 
   // Codex "real-world ecology" notes, chosen by archetype, level or event.
   T.ECOLOGY = {

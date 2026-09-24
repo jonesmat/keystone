@@ -136,19 +136,7 @@ window.Trophic = window.Trophic || {};
   };
 
   // A sampled individual around a species genome (founder variance).
-  T.sampleGenome = function (base, rng, sigmaFrac) {
-    const g = new Float32Array(T.NG);
-    for (const d of GENES) {
-      let v = base[d.i];
-      if (d.marker) v = base[d.i] + rng.gauss() * 0.05;
-      else if (d.discrete) v = rng.next() < 0.04 ? v + (rng.next() < 0.5 ? -1 : 1) : v;
-      else if (d.special && v === 0) v = 0;
-      else if (d.rel) v = v * (1 + rng.gauss() * sigmaFrac * 1.5);   // body size varies relative to itself
-      else v = v + rng.gauss() * sigmaFrac * (d.max - d.min);
-      g[d.i] = T.clampGene(d.i, v);
-    }
-    return g;
-  };
+
 
   // Genome -> plain view object used by the sprite drawer and UI.
   T.geneView = function (g) {

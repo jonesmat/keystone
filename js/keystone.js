@@ -24,7 +24,7 @@ window.Trophic = window.Trophic || {};
       for (const k in rs.eaten) { const j = S.findIndex(s => s.name === k); if (j >= 0) strength[j] += rs.eaten[k]; }
     });
     const tot = strength.reduce((a, b) => a + b, 0) || 1;
-    const ok = sp => !sp.isPlayer && !sp.transient && !sp.grid && pops[sp.idx] > 0;
+    const ok = sp => !sp.transient && !sp.grid && pops[sp.idx] > 0;
     const items = S.filter(ok).sort((a, b) => strength[b.idx] - strength[a.idx]).slice(0, K().top)
       .map(sp => ({ ids: [sp.id], name: sp.name, why: 'strong interactions (' + Math.round(100 * strength[sp.idx] / tot) + '% of the round\'s flows)' }));
     for (const sp of S) {

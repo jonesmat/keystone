@@ -1,23 +1,16 @@
-// Smoke tests: world events, inheritance, speciation, save/load round-trip, refusing old saves, and ledger conservation.
+// Smoke tests: fixed trait sheets, world events, save/load round-trip, refusing old saves, and ledger conservation.
 //   node tools/check-events.js
 const T = require('./load.js');
 const B = T.BALANCE;
 let fails = 0;
 const assert = (c, m) => { if (!c) { console.error('FAIL:', m); fails++; } else console.log('ok  ', m); };
 
-const w = T.createWorld({ seed: 42, roster: T.Gen.meadowRoster(), player: T.Gen.templateFounder(T.TEMPLATES[1]) });
+const w = T.createWorld({ seed: 42, roster: T.Gen.meadowRoster() });
 for (let i = 0; i < 300; i++) w.tick();
 
-// individual variation and inheritance
-const p = w.player;
-w.updateMeans();
-assert(p.sd[T.G.speed] > 0 || p.sd[T.G.bite] > 0, 'founders vary (sd speed ' + p.sd[T.G.speed].toFixed(3) + ', bite ' + p.sd[T.G.bite].toFixed(3) + ')');
-const a = T.newGenome(), b = T.newGenome();
-a[T.G.bite] = 2; b[T.G.bite] = 4;
-const kids = Array.from({ length: 200 }, () => T.Evo.inherit(w, a, b, p, 1));
-const meanBite = kids.reduce((s, g) => s + g[T.G.bite], 0) / kids.length;
-assert(Math.abs(meanBite - 3) < 0.1, 'child genes average the parents (bite ' + meanBite.toFixed(2) + ' ≈ 3)');
-assert(kids.some(g => Math.abs(g[T.G.bite] - 3) > 0.01), 'some children carry mutations');
+// Fixed trait sheets: every individual of a species, newborns included, shares the species' traits.
+const shared = w.species.every(sp => w.ents.filter(e => e.alive && e.sp === sp).every(e => e.g === sp.genome));
+assert(shared, 'every individual carries the fixed trait sheet of its species (no inheritance or mutation)');
 
 // events
 const before = w.countPops().count.reduce((x, y) => x + y, 0);
@@ -31,30 +24,12 @@ for (let i = 0; i < 600; i++) w.tick();
 assert(w.countPops().count[wb.idx] < 24, 'migrating Wanderbucks leave the map (' + w.countPops().count[wb.idx] + ' left)');
 assert(w.checkLedger().err < 1e-6, 'ledger conserved through events (err ' + w.checkLedger().err.toExponential(2) + ')');
 
-// guided mutation and speciation mechanics
-const s0 = p.mean[T.G.speed];
-T.Evo.applyGuided(w, p, 'speed', 1);
-w.updateMeans(p);
-assert(Math.abs(p.mean[T.G.speed] - s0 - 1) < 0.3, 'guided mutation shifts the mean by about one level (' + s0.toFixed(2) + ' → ' + p.mean[T.G.speed].toFixed(2) + ')');
-const members = w.ents.filter(e => e.alive && e.sp === p);
-const half = members.slice(0, Math.floor(members.length / 2));
-for (const e of half) for (let k = 0; k < 8; k++) e.g[T.G.m0 + k] = 0.98;
-for (const e of members.slice(half.length)) for (let k = 0; k < 8; k++) e.g[T.G.m0 + k] = 0.02;
-const c = T.Evo.cluster(w, members);
-assert(c.dist > B.speciationDistance, 'two marker clusters are far apart (distance ' + c.dist.toFixed(2) + ')');
-const nsp = w.species.length;
-const ev = T.Evo.split(w, p, half, 3, c.dist);
-assert(w.species.length === nsp + 1 && ev.child.parentId === p.id, 'split creates ' + ev.child.name + ' from ' + p.name);
-for (let i = 0; i < 200; i++) w.tick();
-assert(w.checkLedger().err < 1e-6, 'ledger conserved after a split');
-
-// save / load v2
+// save / load
 const s = JSON.parse(JSON.stringify(w.serialize()));
 const w2 = T.loadWorld(s, {});
 assert(w2.ents.length === w.ents.filter(e => e.alive).length, 'save/load keeps all ' + w2.ents.length + ' organisms');
-assert(w2.species.length === w.species.length && w2.player.isPlayer, 'save/load keeps species and player');
-const e1 = w.ents.find(e => e.alive), e2 = w2.ents[0];
-assert(e2 && Math.abs(e1.g[T.G.bite] - e2.g[T.G.bite]) < 1e-5, 'individual genomes survive the round-trip');
+assert(w2.species.length === w.species.length, 'save/load keeps every species');
+assert(w2.ents.every(e => e.g === e.sp.genome), 'loaded individuals share the traits of their species');
 for (let i = 0; i < 300; i++) w2.tick();
 assert(w2.checkLedger().err < 1e-6, 'ledger conserved after load');
 console.log('     save size', Math.round(JSON.stringify(s).length / 1024), 'KB');
