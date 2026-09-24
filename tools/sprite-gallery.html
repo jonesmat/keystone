@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sprite gallery</title>
+<!-- P3-ART dev page: every species of a catalog drawn from its template, grouped by template, with the
+     separation nudges noted. Serve the repo (node tools/serve.js 8080) and open /tools/sprite-gallery.html?c=9.4.6 -->
+<style>
+  body { font: 12px "IBM Plex Sans", system-ui, sans-serif; background: #F4EFE3; color: #1F2A24; margin: 16px; }
+  h2 { font-size: 14px; margin: 18px 0 6px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cell { width: calc(142px * var(--z, 1) + 8px); background: #FBF8F1; border: 1px solid #E7E0CD; border-radius: 6px; padding: 4px; }
+  .cell canvas { display: block; }
+  .nm { height: 28px; overflow: hidden; line-height: 14px; }
+  .sep { color: #B5562E; }
+  select, label { font: inherit; }
+  .small canvas.s { background: #C9D6A3; }
+</style>
+</head>
+<body>
+<label>Catalog <select id="cat"></select></label>
+<label><input type="checkbox" id="only"> only separated</label>
+<label>Template <select id="tpl"><option value="">all</option></select></label>
+<div id="out"></div>
+<script src="../js/balance.js"></script>
+<script src="../js/genes.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/scenarios.js"></script>
+<script src="../js/catalogs/index.js"></script>
+<script src="../js/sprites.js"></script>
+<script src="../js/spritetweaks.js"></script>
+<script src="../js/templates.js"></script>
+<script src="../js/templates-more.js"></script>
+<script>
+  const T = window.Trophic;
+  const q = new URLSearchParams(location.search);
+  const sel = document.getElementById('cat'), tplSel = document.getElementById('tpl');
+  for (const c of T.CATALOG_INDEX) sel.add(new Option(c.code + ' ' + c.name, c.code));
+  sel.value = q.get('c') || '9.4.6';
+  for (const k of Object.keys(T.SpriteTweaks.TEMPLATES)) tplSel.add(new Option(k, k));
+  tplSel.value = q.get('t') || '';
+  function load(code, done) {
+    if (T.CATALOGS && T.CATALOGS[code]) return done(T.CATALOGS[code]);
+    const s = document.createElement('script'); s.src = '../js/catalogs/' + code.replace(/\./g, '_') + '.js'; s.onload = () => done(T.CATALOGS[code]); document.head.appendChild(s);
+  }
+  function render() {
+    load(sel.value, cat => {
+      const res = T.SpriteTweaks.forCatalog(cat);
+      const out = document.getElementById('out'); out.innerHTML = '';
+      const by = {};
+      for (const it of res.list) (by[it.tw.tpl] = by[it.tw.tpl] || []).push(it);
+      const s = res.stats;
+      out.insertAdjacentHTML('beforeend', '<p>' + s.drawn + ' drawn, ' + s.collisions + ' look-alike collisions, ' + s.separated + ' separated (' + s.nudges + ' nudges), ' + s.unresolved.length + ' unresolved.</p>');
+      for (const [tpl, list] of Object.entries(by)) {
+        const only = (q.get('t') && !tplSel.dataset.touched ? q.get('t') : tplSel.value).split(',').filter(Boolean);
+        if (only.length && !only.includes(tpl)) continue;
+        const items = (document.getElementById('only').checked ? list.filter(it => it.tw.sep) : list).slice(0, +(q.get('n') || 1e9));
+        if (!items.length) continue;
+        const h = document.createElement('h2'); if (q.get('compact')) h.style.margin = '4px 0'; h.textContent = tpl + ' (' + list.length + ')'; out.appendChild(h);
+        const g = document.createElement('div'); g.className = 'grid'; out.appendChild(g);
+        for (const it of items) {
+          const d = document.createElement('div'); d.className = 'cell';
+          const cv = document.createElement('canvas'); cv.width = 284; cv.height = 180; const z = +(q.get('z') || 1); document.body.style.setProperty('--z', z); cv.style.width = 142 * z + 'px'; cv.style.height = 90 * z + 'px';
+          T.paintCreature(cv, { tweaks: it.tw }, {});
+          const small = T.getSprite('', { tweaks: it.tw }, 28);
+          const sc = document.createElement('canvas'); sc.width = small.width; sc.height = small.height; sc.className = 's'; sc.getContext('2d').drawImage(small, 0, 0);
+          d.appendChild(cv); d.appendChild(sc);
+          d.insertAdjacentHTML('beforeend', '<div class="nm">' + (it.e.common || it.e.sci) + (it.tw.sep ? ' <span class="sep">(nudged ' + it.tw.sep + ')</span>' : '') + '<br><i>' + it.e.family + '</i></div>');
+          d.title = JSON.stringify({ parts: it.tw.parts, p: it.tw.p, marks: it.tw.marks, pose: it.tw.pose });
+          g.appendChild(d);
+        }
+      }
+    });
+  }
+  tplSel.addEventListener('change', () => { tplSel.dataset.touched = 1; });
+  // ?sheet=1: one contact sheet canvas filling the window (for quick screenshots): n species per template row.
+  function sheet() {
+    load(sel.value, cat => {
+      const res = T.SpriteTweaks.forCatalog(cat), by = {};
+      for (const it of res.list) (by[it.tw.tpl] = by[it.tw.tpl] || []).push(it);
+      const only = (q.get('t') || '').split(',').filter(Boolean);
+      const rows = Object.entries(by).filter(([k]) => !only.length || only.includes(k));
+      const n = +(q.get('n') || 8), W = innerWidth - 4, H = innerHeight - 4;
+      const cw = W / n, ch = Math.min(cw * 0.75, H / rows.length);
+      document.body.innerHTML = ''; document.body.style.margin = '0';
+      const cv = document.createElement('canvas'); cv.width = W * 2; cv.height = H * 2; cv.style.width = W + 'px'; cv.style.height = H + 'px'; document.body.appendChild(cv);
+      const ctx = cv.getContext('2d'); ctx.scale(2, 2);
+      rows.forEach(([tpl, list], r) => list.slice(0, n).forEach((it, i) => {
+        const x = i * cw, y = r * ch;
+        ctx.fillStyle = (r + i) % 2 ? '#FBF8F1' : '#F1EBDC'; ctx.fillRect(x, y, cw, ch);
+        const len = Math.min(cw * 0.62, ch * 0.82);
+        ctx.save(); ctx.translate(x + cw / 2, y + ch * 0.86 - len * 0.3); T.SpriteTemplates.draw(ctx, it.tw, len, {}); ctx.restore();
+        ctx.fillStyle = '#1F2A24'; ctx.font = '9px sans-serif'; ctx.fillText((it.e.common || it.e.sci).slice(0, 22), x + 2, y + 9);
+      }));
+    });
+  }
+  if (q.get('sheet')) { sheet(); } else {
+  sel.onchange = tplSel.onchange = document.getElementById('only').onchange = render;
+  render(); }
+</script>
+</body>
+</html>

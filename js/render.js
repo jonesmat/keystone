@@ -344,7 +344,7 @@ window.Trophic = window.Trophic || {};
     const ctx = this.ctx, sp = e.sp;
     const lenTiles = (0.55 + 0.3 * Math.sqrt(e.st.mass)) * (e.grow < 1 ? 0.8 : 1);
     const px = lenTiles * tileScreen;
-    const img = T.getSprite(sp.spriteKey, { genome: sp.mean, level: sp.level, hue: sp.hue, id: sp.id }, px);
+    const img = T.getSprite(sp.spriteKey, { genome: sp.mean, level: sp.level, hue: sp.hue, id: sp.id, tweaks: sp.meta && sp.meta.tweaks }, px);
     const bucket = img.width / 2;
     const scale = (lenTiles * TP) / (bucket * 1.3);
     ctx.save();

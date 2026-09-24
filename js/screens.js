@@ -579,9 +579,10 @@ window.Trophic = window.Trophic || {};
       }
       ctx.fillStyle = 'rgba(31,42,36,0.25)';
       if (P.kind === 'woody') for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(60 + k * 90, 90 + (k % 2) * 120, 38, 0, Math.PI * 2); ctx.fill(); }
+      if (P.tweaks) T.paintCreature(cv, { tweaks: P.tweaks }, { keep: true, scale: 1.05 });   // P3-ART plant template
       return;
     }
-    T.paintCreature(cv, { genome: sp.genome, level: sp.level, hue: sp.hue, id: sp.id }, { t: 0.3, scale: 1.05 });
+    T.paintCreature(cv, { genome: sp.genome, level: sp.level, hue: sp.hue, id: sp.id, tweaks: sp.meta && sp.meta.tweaks }, { t: 0.3, scale: 1.05 });
   }
 
   function drawHistory(cv, series) {
