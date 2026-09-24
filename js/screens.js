@@ -50,7 +50,9 @@ window.Trophic = window.Trophic || {};
     const st = G.setup;
     document.querySelectorAll('#mode-tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === st.mode)));
     $('continue-box').hidden = !save;
-    if (save) {
+    $('btn-continue').disabled = !!(save && save.old);
+    if (save && save.old) $('continue-info').textContent = '— from an older version of Keystone; it cannot be loaded. Start a new world.';
+    else if (save) {
       const r = save.run;
       $('continue-info').textContent = '— ' + r.speciesName + ', round ' + r.round + ' · ' + (r.mode === 'generated' ? 'generated world' : r.mode === 'channel' ? 'Open Channel' : r.mode === 'catalog' ? r.worldName : 'Temperate Meadow') + ' · ' + B.difficulties[r.difficulty].name;
     }

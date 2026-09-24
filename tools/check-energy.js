@@ -1,5 +1,5 @@
 // Energy-chain checks (Phase 3).
-//   node tools/check-energy.js [--rounds 8] [--seeds 3] [--mode game|realism|both] [--legacy] [--set key=value ...] [--skip-live]
+//   node tools/check-energy.js [--rounds 8] [--seeds 3] [--mode game|realism|both] [--set key=value ...] [--skip-live]
 // Part 1 books the textbook's worked example (pp. 192–193) through the real sim's photosynthesis, digestion and
 // ledger, then reads it back through T.Energy.measure. Every row must land within ±10% of the textbook.
 // Part 2 plays hands-off Meadow worlds and reports each measured efficiency against the mode's target band.
@@ -7,11 +7,10 @@ const T = require('./load.js');
 const B = T.BALANCE;
 
 const args = process.argv.slice(2);
-const opt = { rounds: 8, seeds: 3, mode: 'both', legacy: false, skipLive: false, set: [] };
+const opt = { rounds: 8, seeds: 3, mode: 'both', skipLive: false, set: [] };
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
-  if (a === '--legacy') opt.legacy = true;
-  else if (a === '--skip-live') opt.skipLive = true;
+  if (a === '--skip-live') opt.skipLive = true;
   else if (a === '--set') opt.set.push(args[++i]);
   else if (a.startsWith('--')) opt[a.slice(2)] = args[++i];
 }
@@ -31,8 +30,8 @@ let failures = 0;
 // One closed world: a single producer (NPP efficiency 50%), one herbivore and one primary carnivore,
 // with harvesting, assimilation and tissue growth fixed at the textbook's values.
 function bookExample(tissue) {
-  const saved = { litterRate: B.litterRate, legacyMealP: B.legacyMealP };
-  B.litterRate = 0; B.legacyMealP = 0;
+  const saved = { litterRate: B.litterRate };
+  B.litterRate = 0;
   const biome = Object.assign({}, B.biomes.meadow, { water: 0 });
   const w = new T.World({ seed: 7, biome, mode: 'game' });
   w.setProducers([{ id: 'test', name: 'Testgrass', kind: 'ground', max: 1e12, resp: 0.5, height: 0, leaf: 1, regrowDelay: 0,
@@ -117,7 +116,7 @@ function liveRun(modeId) {
   let err = 0, ms = 0;
   for (let s = 1; s <= opt.seeds; s++) {
     const seed = T.Gen.hashSeed(2000, s);
-    const w = T.createWorld({ seed, roster: T.Gen.meadowRoster(), player: null, mode: modeId, difficulty: B.difficulties.standard });
+    const w = T.createWorld({ seed, roster: T.Gen.meadowRoster(), player: null, mode: modeId, closed: true, difficulty: B.difficulties.standard });
     const prod0 = w.producerBiomass();
     for (let r = 1; r <= opt.rounds; r++) {
       const t0 = Date.now();
@@ -138,7 +137,7 @@ function liveRun(modeId) {
     ends.push('    seed ' + s + ': ' + ['herbivore', 'omnivore', 'carnivore1', 'carnivore2', 'decomposer'].map(L => L.slice(0, 5) + ' ' + (byLv[L] || 0)).join(' · ') +
       ' · producers ' + Math.round((100 * w.producerBiomass()) / prod0) + '% of start · soil nutrients ' + (nut / w.nutr.length).toFixed(2));
   }
-  console.log('Part 2 · ' + B.modes[modeId].name + ' mode' + (B.legacyMealP ? ' (legacy Phase 2 per-meal P)' : '') +
+  console.log('Part 2 · ' + B.modes[modeId].name + ' mode' +
     ' · Meadow, hands-off, ' + opt.seeds + ' seeds × ' + opt.rounds + ' rounds (median of rounds 2+)');
   for (const k of KEYS) {
     const v = median(vals[k]);
@@ -154,7 +153,6 @@ function liveRun(modeId) {
 
 textbookCheck();
 if (!opt.skipLive) {
-  if (opt.legacy) B.legacyMealP = 1;
   const modes = opt.mode === 'both' ? ['game', 'realism'] : [opt.mode];
   for (const m of modes) { console.log(''); liveRun(m); }
 }

@@ -1,12 +1,13 @@
 // Keystone — Phase 2 controller: New world setup (generated rosters + stability test), the round loop
 // (Evolve → Simulate → Selection report), breeding orders, speciation choices, phylogeny records,
-// victory/defeat, events, save/load (v2 with v1 migration) and input.
+// victory/defeat, events, save/load and input.
 window.Trophic = window.Trophic || {};
 
 (function (T) {
   'use strict';
   const B = T.BALANCE;
-  const SAVE_KEY = 'trophic.save.v2', OLD_SAVE_KEY = 'trophic.save.v1', SETTINGS_KEY = 'trophic.settings.v1';
+  // Saves from older versions of the game aren't migrated: they're recognised and refused.
+  const SAVE_KEY = 'keystone.save', OLD_SAVE_KEYS = ['trophic.save.v2', 'trophic.save.v1'], SETTINGS_KEY = 'trophic.settings.v1';
   const clone = o => JSON.parse(JSON.stringify(o));
   const $ = id => document.getElementById(id);
   function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
@@ -61,8 +62,7 @@ window.Trophic = window.Trophic || {};
     G.renderNewWorld();
   };
   G.renderNewWorld = function () {
-    const v2 = loadKey(SAVE_KEY), v1 = loadKey(OLD_SAVE_KEY);
-    S().renderNewWorld(v2 && (!v1 || v2.savedAt >= (v1.savedAt || 0)) ? v2 : v1 || v2);
+    S().renderNewWorld(storedSave());
   };
 
   G.setMode = function (m) {
@@ -242,7 +242,7 @@ window.Trophic = window.Trophic || {};
     if (st.ftab === 'roll') mp += B.rolledFounderMP;
     if (st.ftab === 'custom') mp = B.customFounderMP;
     G.run = {
-      v: 2, seed, mode: st.mode, biome: biome.id, difficulty: st.difficulty, speciesName: founder.name,
+      v: T.SAVE_VERSION, seed, mode: st.mode, biome: biome.id, difficulty: st.difficulty, speciesName: founder.name,
       ecoregion: st.mode === 'catalog' ? st.ecoregion : null, scenario: scen ? scen.id : null, worldName: st.mode === 'catalog' ? (scen ? scen.name + ' · ' : '') + biome.name : null,
       seedString: st.mode === 'catalog' ? st.roster.seedString : null,
       founder: { tab: st.ftab, id: st.ftab === 'templates' ? st.templateId : st.ftab === 'roll' ? st.archetypeId : st.customLevel },
@@ -753,46 +753,40 @@ window.Trophic = window.Trophic || {};
 
   // ---------- save / load ----------
 
+  // The run in storage: the current save, or { old: true } when only an older version's save is there.
+  function storedSave() {
+    const data = loadKey(SAVE_KEY);
+    if (data) return data.v === T.SAVE_VERSION ? data : { old: true };
+    return OLD_SAVE_KEYS.some(k => loadKey(k)) ? { old: true } : null;
+  }
+  const OLD_SAVE = 'This save is from an older version of Keystone and cannot be loaded. Start a new world.';
+
   G.saveData = function () {
     const run = Object.assign({}, G.run, { report: null });
-    return { v: 2, savedAt: Date.now(), run, world: G.world.serialize() };
+    return { v: T.SAVE_VERSION, savedAt: Date.now(), run, world: G.world.serialize() };
   };
   G.save = function () {
     if (!G.run || !G.world) return;
     if (!store(SAVE_KEY, G.saveData())) UI().toast('Autosave failed (browser storage full or unavailable). Export your save from the menu.', 'bad');
-    else if (G.run.migratedFrom === 1) removeKey(OLD_SAVE_KEY);   // a Phase 1 save is only retired once it has been migrated
+    else for (const k of OLD_SAVE_KEYS) removeKey(k);   // a new run replaces an old version's save
   };
   G.continueRun = function () {
-    const v2 = loadKey(SAVE_KEY), v1 = loadKey(OLD_SAVE_KEY);
-    const data = v2 && (!v1 || v2.savedAt >= (v1.savedAt || 0)) ? v2 : v1 || v2;
+    const data = storedSave();
     if (!data) { UI().toast('No saved run found.', 'bad'); return; }
     G.loadData(data);
   };
 
-  // Phase 1 run objects: carry over MP, round, rivals and score; start Phase 2 records.
-  function migrateRunV1(r, w) {
-    return {
-      v: 2, seed: r.seed, mode: 'meadow', biome: 'meadow', difficulty: r.difficulty || 'standard', speciesName: r.speciesName,
-      founder: { tab: 'templates', id: r.templateId }, round: r.round, mp: r.mp, orders: [], mutants: [], championUsed: false, prevMean: null,
-      rivals: r.rivals || [], rivalRecords: r.rivalRecords || {}, collapseCount: r.collapseCount || 0, apexCount: r.apexCount || 0,
-      startProducer: r.startProducer || w.producerBiomass(), scoreEU: r.scoreEU || 0, rivalsDefeatedTotal: r.rivalsDefeatedTotal || 0,
-      activeEvents: r.activeEvents || [], pendingEvent: r.pendingEvent || null, eventRolledRound: r.eventRolledRound || 0, eventThisRound: null,
-      roundStartPop: r.roundStartPop || 0, outcome: null, history: r.history || [], pendingSplit: null, guidedLast: {}, mutantsLast: {},
-      phylo: { lastRound: r.round, species: {}, producers: {} }, migratedFrom: 1,
-    };
-  }
-
   G.loadData = function (data) {
     try {
-      if (!data || !data.world || !data.run || (data.v !== 1 && data.v !== 2)) throw new Error('Not a Keystone save file');
+      if (data && (data.old || (data.v != null && data.v !== T.SAVE_VERSION))) { UI().toast(OLD_SAVE, 'bad'); return; }
+      if (!data || !data.world || !data.run) throw new Error('Not a Keystone save file');
       G.cancelGen();
       const w = T.loadWorld(data.world, { debug: G.settings.debug });
       G.world = w;
-      G.run = data.v === 1 ? migrateRunV1(data.run, w) : data.run;
+      G.run = data.run;
       w.round = G.run.round;
       w.player.name = G.run.speciesName;
       w.rebuildDiet();
-      if (data.v === 1) { G.recordPhylo(G.run.round); UI().toast('Phase 1 save migrated: your species now has individual genomes.', 'good'); }
       G.enterEvolve();
       UI().toast('Save loaded: round ' + G.run.round, 'good');
     } catch (e) {

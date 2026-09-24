@@ -24,7 +24,6 @@ Trophic.BALANCE = {
   canopyShade: 0.40,        // max shade from tall neighbours (-40%)
 
   // Producers
-  C_photo: 0.20,            // Phase 2 value; Phase 3 reads it from the energy mode
   R_plant: 0.50,            // fallback for producers without their own resp trait
   leafFloor: 0.25,          // logistic regrowth: grazed-down plants capture less light
   nutrientStart: 0.75,
@@ -40,20 +39,13 @@ Trophic.BALANCE = {
   // Consumers — digestion (interpolated by diet: 0 = pure plant, 0.5 = omnivore, 1 = pure meat)
   plantA: [0.50, 0.35, 0.20],
   meatA: [0.60, 0.70, 0.80],
-  levelP: [0.30, 0.28, 0.18],   // GDD 0.25 omnivores / 0.15 carnivores, tuned up so higher levels stay playable
-  apexP: 0.14,                  // GDD 0.12
-  meatStorageCut: 0.5,          // max EU per mass shrinks by up to 50% for pure meat-eaters (not apex)
-  apexRestUpkeep: 0.6,          // apex predators' basal upkeep multiplier
-  endothermP: 0.00,         // GDD default −0.05; 0 (inside the −0.10..0 test range) keeps carnivores viable
-  ectothermP: +0.08,
-  ectoColdLight: 0.60,      // Phase 2: below 60% light ectotherms slow down
-  ectoColdSpeed: 0.60,      // -40% speed
-  // Phase 3: ectotherm speed and eat rate follow air temperature; below freezing they go torpid.
+  ectoColdSpeed: 0.60,      // cold-snap event: -40% ectotherm speed
+  // Ectotherm speed and eat rate follow air temperature; below freezing they go torpid.
   ectoFullTemp: 25,         // °C at which ectotherms reach full speed and eat rate
   ectoMinPerf: 0.3,         // performance just above freezing
   ectoTorpidTemp: 0,        // °C below which ectotherms go torpid (rest, 30% upkeep)
   decomposerA: 0.60,
-  decomposerP: 0.30,
+  decomposerP: 0.30,        // individual decomposers keep 30% of what they assimilate; the rest is respired
 
   // Upkeep (U = k * M^0.75 + traits + activity)
   k: 0.02,
@@ -123,10 +115,7 @@ Trophic.BALANCE = {
   markerSigma: 0.08,
   founderSigma: 0.06,       // starting populations sampled around the founder genome
   mateRadius: 4,            // tiles
-  loneRadius: 8,            // no conspecific this close for loneTicks → asexual clone
-  loneTicks: 200,
   juvenileMass: 0.4,        // young are born at 40% of adult mass
-  juvenileUpkeep: 1.2,      // growth is paid as extra upkeep
   agingUpkeep: 0.02,        // +2% upkeep per round after maturity
   lifespanMult: 3,          // scales the longevity gene into ticks (1 = gene value in rounds; 3 keeps predators viable)
   densityShare: 0.15,       // above 15% of the entity budget, breeding gets harder
@@ -156,7 +145,6 @@ Trophic.BALANCE = {
 
   // ---------- Phase 3: textbook energy chain ----------
   // GPP -> plant respiration -> NPP -> harvesting -> assimilation -> metabolism -> tissue growth (NSP).
-  legacyMealP: 0,           // 1 = Phase 2 per-meal P, kept for comparison runs; 0 = all consumer respiration is upkeep
   energyMode: 'game',
   modes: {
     // Game: scaled efficiencies that keep endotherm predators viable on a 64 x 64 map.
@@ -258,6 +246,23 @@ Trophic.BALANCE = {
     oldAt: 0.55,            // share of lifespan spent as a breeding adult before post-reproductive age
     seedBlobs: [8, 14], blobRadius: [3, 6],   // small taxa start widespread, so the animals that eat them can find them
     groupRadius: [2, 6],    // vertebrate groups: tiles within this of a member (by roam) make up the group's region
+  },
+
+  // ---------- Phase 3: demography (js/demography.js) ----------
+  // The regional pool behind the map edges, emigration above 0.8 K, mating systems and territories.
+  demography: {
+    immigration: 0.4,       // arrivals per round from a healthy regional pool, for a species at its starting numbers
+    apexImmigration: 0.3,   // apex predators arrive this much less often (large ranges, few animals)
+    rescue: 6,              // up to this many times more arrivals as a species falls toward zero (the rescue effect)
+    groupSize: [2, 3],      // individuals arriving together (a male and female at least); herds use their herd size
+    popArrival: 12,
+    reintroduce: 6,         // founders released in a reintroduction         // individuals in a Population patch arriving at the edge
+    emigrationEvery: 100,   // ticks between emigration checks
+    emigrateAt: 0.8,        // share of K above which young adults leave
+    emigrateRate: 0.15,     // chance per check for a young adult, reached at 100% of K
+    emigrateMax: 0.25,
+    alleeRadius: 5,         // explosive breeders need this many others of their kind within this radius to spawn
+    alleeCount: 2,
   },
 
   // Catalog worlds: individual vertebrates at the start, shared out by trophic level (smaller species get more).

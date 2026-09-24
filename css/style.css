@@ -548,3 +548,15 @@ h3.h-serif { font-size: 16px; }
   .evolved li .c { grid-column: 2 / -1; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Demography (P3-M5): the age pyramid in the inspector, males left and females right */
+.demog { border-top: 1px solid var(--line, rgba(127,127,127,.25)); padding-top: 8px; margin-top: 4px; }
+.demog .eq { font-family: var(--mono); font-size: 11px; margin: 0 0 8px; }
+.age-pyr { display: grid; gap: 3px; margin-bottom: 8px; }
+.age-row { display: grid; grid-template-columns: 1fr 110px 1fr; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-2); }
+.age-row span { text-align: center; }
+.age-row .bar { height: 9px; display: flex; }
+.age-row .bar.m { justify-content: flex-end; }
+.age-row .bar i { display: block; height: 100%; border-radius: 2px; }
+.age-row .bar.m i { background: #6f9fd8; }
+.age-row .bar.f i { background: #d88f6f; }

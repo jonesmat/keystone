@@ -300,6 +300,36 @@ window.Trophic = window.Trophic || {};
 
   // A Population: one species' group in one connected region. Individuals in small-taxa Populations can't be
   // selected; herds, packs and flocks list their members instead.
+  // Phase 3 demography for a species: N against K with its growth curve, last round's N1 = N0 + B + I − D − E,
+  // and an age pyramid (juveniles, breeding adults, post-reproductive; males left, females right).
+  const CURVE_TEXT = { exponential: 'exponential growth', logistic: 'logistic, toward K', stable: 'stable', overshoot: 'overshooting K',
+    declining: 'declining', recolonizing: 'recolonizing', absent: 'absent' };
+  function demographyBlock(sp) {
+    const w = G.world;
+    if (!w.demography) return null;
+    const d = w.demography.find(x => x.id === sp.id);
+    const n = w.countPops().count[sp.idx];
+    const pool = w.pool && w.pool[sp.id];
+    const wrap = el('div', { class: 'demog' });
+    wrap.append(el('div', { class: 'ins-kv' },
+      el('div', null, 'N / K ', el('b', { text: fmt(n) + ' / ' + (sp.K ? fmt(Math.round(sp.K)) : '—') })),
+      el('div', null, 'Curve ', el('b', { text: d ? CURVE_TEXT[d.curve] || d.curve : 'first round' })),
+      el('div', null, 'Mating ', el('b', { text: sp.mating || '—' })),
+      el('div', null, 'Regional pool ', el('b', { text: !pool ? '—' : pool.regionallyExtinct ? 'regionally extinct' : pool.poolOnly ? 'reintroduction only' : 'arrivals ' + Math.round(pool.level * 100) + '%' }))));
+    if (d) wrap.append(el('p', { class: 'caption eq', text: 'Last round: N1 = N0 + B + I − D − E = ' + d.N0 + ' + ' + d.B + ' + ' + d.I + ' − ' + d.D + ' − ' + d.E + ' = ' + d.N1 +
+      (d.r == null ? '' : ' · r = ' + (d.r >= 0 ? '+' : '') + d.r.toFixed(0) + '%') }));
+    const a = w.ageStructure(sp), max = Math.max(1, a.juvenile[0], a.juvenile[1], a.breeding[0], a.breeding[1], a.post[0], a.post[1]);
+    const pyr = el('div', { class: 'age-pyr', title: 'Age structure: males left, females right' });
+    for (const [k, label] of [['post', 'Post-reproductive'], ['breeding', 'Breeding'], ['juvenile', 'Juvenile']]) {
+      pyr.append(el('div', { class: 'age-row' },
+        el('div', { class: 'bar m' }, el('i', { style: { width: (a[k][0] / max) * 100 + '%' } })),
+        el('span', { text: label }),
+        el('div', { class: 'bar f' }, el('i', { style: { width: (a[k][1] / max) * 100 + '%' } }))));
+    }
+    wrap.append(pyr);
+    return wrap;
+  }
+
   UI.renderRegionInspector = function (box, sel, close) {
     const w = G.world, sp = w.species[sel.region.sp];
     const r = sp && w.regionById(sp.idx, sel.region.id);
@@ -332,6 +362,8 @@ window.Trophic = window.Trophic || {};
     const hist = (r.history || []).slice(-3).map(h => 'Round ' + h.round + ': ' + h.text);
     box.append(el('p', { class: 'caption', text: (hist.length ? hist.join(' · ') + '. ' : 'Formed round ' + r.born + '. ') +
       (sp.grid ? 'Simulated as a Population: individuals can\'t be selected.' : 'The combined home ranges of its members.') }));
+    const dg = demographyBlock(sp);
+    if (dg) box.append(dg);
     UI.placeInspector(((r.tiles[0] % w.N) + 0.5), (((r.tiles[0] / w.N) | 0) + 0.5));
   };
 
@@ -483,6 +515,7 @@ window.Trophic = window.Trophic || {};
         el('div', null, 'Age ', el('b', { text: (e.age / B.roundTicks).toFixed(1) + ' / ' + (e.life / B.roundTicks).toFixed(1) + ' rounds' })),
         el('div', null, 'Parents ', el('b', { text: e.parents ? '#' + String(e.parents[0]).padStart(4, '0') + ' × #' + String(e.parents[1]).padStart(4, '0') : 'founder' })),
         el('div', null, 'Offspring ', el('b', { text: String(e.offspring) })),
+        el('div', null, 'Sex ', el('b', { text: (e.sex === 'F' ? 'female' : 'male') + (e.terr ? ' · territory' : '') + (e.emigrating ? ' · emigrating' : '') })),
         (() => {
           const rid = sp.regionMap ? sp.regionMap[w.tileAt(e.x, e.y)] : 0, reg = rid && w.regionById(sp.idx, rid);
           return reg ? el('div', null, 'Group ', el('button', { class: 'linklike', text: reg.label + ' (' + reg.n + ')', onclick: () => { G.renderer.selected = { region: { sp: sp.idx, id: rid } }; UI.renderInspector(); } })) : el('span');
@@ -498,6 +531,8 @@ window.Trophic = window.Trophic || {};
           el('span', { class: 'v' }, v.toFixed(2) + ' ', el('span', { class: v - m >= 0 ? 'pos' : 'neg', text: signed(v - m) }))));
       }
       box.append(rows);
+      const dg = demographyBlock(sp);
+      if (dg) box.append(dg);
       if (sp.isPlayer) {
         const run = G.run;
         const cd = Math.max(0, w.cullReady - w.t);
@@ -579,8 +614,8 @@ window.Trophic = window.Trophic || {};
   };
 
   UI.radarValues = function (st) {
-    const eff = Math.max(st.canPlants ? st.plantA * st.P : 0, st.canMeat ? st.meatA * st.P : 0);
-    const effTop = B.legacyMealP ? 0.3 : 0.9;   // Phase 3 has no per-meal P, so assimilation alone fills the axis
+    const eff = Math.max(st.canPlants ? st.plantA : 0, st.canMeat ? st.meatA : 0);
+    const effTop = 0.9;
     return [
       Math.min(1, (st.dmg * (1 + 0.25 * st.venom)) / 50), Math.min(1, (st.armor + st.reflect + st.maxHp / 150) / 1.4),
       Math.min(1, st.speed / 0.32), Math.min(1, st.sight / 13), Math.min(1, eff / effTop),

@@ -23,6 +23,8 @@ node tools/serve.js 8080
 
 Add `?debug=1` to show the live energy-ledger check.
 
+The game keeps no backward compatibility while it's in development: saves carry a version (`T.SAVE_VERSION`), and a save from an older version shows a message and isn't loaded. Phase 2's energetics switch and the Phase 1 save migration were removed.
+
 ## Phase 2 in one paragraph
 
 Every individual now carries its own genome (32 genes plus 8 neutral markers). Offspring blend two parents and pick up random mutations, so natural selection happens inside each population. When a population forms two distinct genetic clusters for two rounds, it splits into a new named species. A *Generated world* rolls a fresh roster of 10–16 consumers and 3–6 producers from archetypes, then runs a 5-round headless stability test before play. The player breeds rather than sculpts:
@@ -41,9 +43,10 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `js/balance.js` | Every tuning knob, including Phase 2 evolution, speciation and safeguard parameters |
 | `js/genes.js` | Gene schema (range, step, MP cost, upkeep), genome helpers, base64 packing for saves |
 | `js/data.js` | Trophic levels, the hand-authored Meadow roster, templates, directives, events, tutorial, Codex ecology notes |
-| `js/sim.js` | Fixed-step simulation (10 ticks/s): per-individual stats, juveniles, aging, mate-finding, behaviour genes, producer tile genes, microhabitats, energy ledger, save v2 plus v1 migration. Phase 3: GPP/NPP booking per producer, litterfall, upkeep-only metabolism with thermoregulation, body tissue, ectotherm temperature response |
+| `js/sim.js` | Fixed-step simulation (10 ticks/s): per-individual stats, juveniles, aging, mate-finding, behaviour genes, producer tile genes, microhabitats, energy ledger, versioned saves (older versions are refused, not migrated). Phase 3: GPP/NPP booking per producer, litterfall, upkeep-only metabolism with thermoregulation, body tissue, ectotherm temperature response |
 | `js/cycles.js` | Phase 3 nutrient, water and carbon cycles: soil nitrogen pools and their bacteria, legume and free-living fixation, excretion by body plan, the nitrogen ledger, rain events, infiltration, runoff, evapotranspiration, groundwater, compaction, peat, open-water carbon uptake and the CO₂/climate trend |
 | `js/populations.js` | Phase 3 two-tier simulation: small taxa as Populations (per-tile densities by age class, pooled reserves, tissue and nitrogen), their feeding, metabolism, births, deaths and dispersal; regions that split and merge with place-based names; herd, pack and flock regions for individually simulated vertebrates |
+| `js/demography.js` | Phase 3 demography: the regional pool behind the map edges (immigration with a rescue effect, emigration above 0.8 K, recolonization, regional extinction, reintroduction), carrying capacity per species, exponential/logistic curve labels, the round's N1 = N0 + B + I − D − E table, mating systems with the Allee threshold, territories, age structure, density-dependent disease |
 | `js/scenarios.js` | Phase 3 scenarios in the niche-slot format: each names an ecoregion and lists slots (role, count, native, conservation status, foraging layer, start in the regional pool or seed bank), never species; plus the Sandbox slots and domestic cattle |
 | `js/catalog.js` | Phase 3 catalogs at runtime: on-demand loading, deterministic slot draws weighted by how widely a species is recorded, real traits → game definitions, the food web from real diets, the starting-number budget, slot-level stability redraws and shareable seeds |
 | `js/catalogs/*.js` | Generated real-species catalogs, one per ecoregion, plus `index.js` listing them (built by `tools/catalog/build.js`) |
@@ -57,13 +60,14 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 | `js/game.js` | Controller: setup, round loop, orders economy, speciation choices, phylogeny records, events, saves, input |
 | `tools/headless.js` | Run one world in Node: `node tools/headless.js grazer 10 12345 [meadow\|generated]` |
 | `tools/sweep.js` | Seed sweep against the Phase 2 balance targets: `node tools/sweep.js --seeds 20 --rounds 30 [--mode generated] [--set key=value] [--csv out.csv]` |
-| `tools/check-events.js` | Smoke tests: inheritance, events, speciation, save round-trip, v1 migration, generator rules |
+| `tools/check-events.js` | Smoke tests: inheritance, events, speciation, save round-trip, refusing an older version's save, generator rules |
 | `tools/catalog/build.js` | Builds an ecoregion catalog from open data (EPA ecoregions, GBIF occurrences and taxonomy, GRIIS, EltonTraits, USDA PLANTS, Open-Meteo), caching every download in `tools/catalog/cache/`: `node tools/catalog/build.js <9.3 \| 9.4.6 \| all> [--quota-scale 1.6]` |
 | `tools/check-catalog.js` | Phase 3 catalog draw checks: deterministic seeds, slot constraints, 60–150 species, a sane food web, stability with slot redraws, ledgers and tick cost: `node tools/check-catalog.js 9.4.6 songbird` |
+| `tools/check-demography.js` | Phase 3 demography checks: the round table balances exactly, half the founders are female and a species with no males doesn't breed, a species wiped out locally recolonizes (a regionally extinct one doesn't), emigration only above 0.8 K, territories don't overlap and are released on death, the Allee threshold, disease targets the highest N/K, saves keep sexes, territories and K: `node tools/check-demography.js` |
 | `tools/check-populations.js` | Phase 3 Population checks: ledgers conserved, a cleared strip splits a region and closing it merges them back, predators' kills from Populations are booked, every herd member belongs to one group region, saves keep Populations: `node tools/check-populations.js` |
 | `tools/check-cycles.js` | Phase 3 cycle checks: nitrogen and energy conserved; removing decomposers slows producers; compaction denitrifies and sheds rain; legumes enrich soil; warming hits the south first: `node tools/check-cycles.js [--seeds 2] [--rounds 6]` |
 | `tools/check-pyramids.js` | Phase 3 pyramid checks: in Temperate Meadow and Open Channel the energy pyramid must narrow every round; numbers and biomass are checked against the design's validation table: `node tools/check-pyramids.js [--seeds 3] [--rounds 8]` |
-| `tools/check-energy.js` | Phase 3 energy checks: the textbook's 100,000-unit example must come back within ±10%, then hands-off worlds are measured against each mode's bands: `node tools/check-energy.js [--seeds 3] [--rounds 8] [--mode game\|realism\|both] [--legacy] [--set key=value]` |
+| `tools/check-energy.js` | Phase 3 energy checks: the textbook's 100,000-unit example must come back within ±10%, then hands-off worlds are measured against each mode's bands: `node tools/check-energy.js [--seeds 3] [--rounds 8] [--mode game\|realism\|both] [--set key=value]` |
 
 ## Where it deviates from the Phase 2 design
 
@@ -93,7 +97,6 @@ Every individual now carries its own genome (32 genes plus 8 neutral markers). O
 - **Body tissue.** Animals carry tissue energy on top of reserves. Parents pay for newborns' tissue, juveniles build it as they grow, and carcasses carry it, so NSP is real food for the next level.
 - **Ectotherms** slow with air temperature and go torpid below freezing, replacing Phase 2's light-based slowdown.
 - **Game and Realism modes** (`BALANCE.energyMode`): Game captures 20% of sunlight; Realism captures 1% of 20× the sunlight and triples thermoregulation.
-- `BALANCE.legacyMealP = 1` restores the Phase 2 model for comparison runs.
 
 Last `check-energy.js` run, 5 seeds × 10 rounds, hands-off Meadow:
 
@@ -141,7 +144,7 @@ Last `check-cycles.js` run (2 seeds × 5 rounds): all five checks pass. Per roun
 - **Real ecoregion worlds** (New world tab): pick an ecoregion and a scenario (or Sandbox). The cast is drawn from the scenario's niche slots, weighted by how widely each species is recorded, and stability-tested; failing slots are redrawn on their own. The seed to share appears under the controls (e.g. `9.4.6-songbird-1001`), and pasting one into the seed box rebuilds the same world. Real traits map to game traits (body mass → size, life history and lifespan; diet → meat share; endotherm/ectotherm; flight, swimming, herds and packs), the food web comes from real diets, and starting numbers share a vertebrate budget of about 280 individuals. Catalog species keep fixed traits (no mutation). The in-game menu's *Data sources* section credits every source.
 - **Engine changes that came with real species:** Populations forage over nearby tiles and eat other Populations; grazers crop as they walk; endotherms are insulated for their ecoregion's climate; grasses set seed and seed-eaters start the year with some; prairie grasses and forbs carry more standing crop than moss-like ground cover.
 
-**Open:** in colder or more crowded draws (9.3 *Rewilding the ranch*), only about 45% of starting species survive 5 hands-off rounds; on the Edwards Plateau it's about 70% after 3. Balancing real-species casts is its own tuning pass, and P3-M5's regional pool (immigration and the rescue effect) is the design's counter to local extinction. Species tweak sets for sprites aren't built yet.
+**Open:** species tweak sets for sprites aren't built yet, and there's no Hawaiʻi catalog. With P3-M5's regional pool, cast survival after 3 hands-off rounds is about 81% on 9.3 *Rewilding the ranch* (was about 45% after 5) and 94–98% on the Edwards Plateau (was about 70%).
 
 - **Populations:** species flagged `population` (Rotmite, Siltworm, Driftling, Glassclam, and generated decomposers) aren't simulated as individuals. Each keeps a density grid: juveniles, breeding adults and post-reproductive individuals per tile, with pooled reserves, body tissue and nitrogen.
 - **The update:** every 10 ticks each tile feeds from its own food (detritus, plants, fruit), pays metabolism (with thermoregulation and ectotherm torpor), matures, ages, breeds when well fed, and dies of starvation or age. Bodies go to detritus. Crowded or hungry tiles send dispersers to neighbouring tiles the species can live on. Every flow goes through the same energy and nitrogen ledgers and round stats as individuals, so efficiencies, pyramids and the report include them.
@@ -152,6 +155,20 @@ Last `check-cycles.js` run (2 seeds × 5 rounds): all five checks pass. Per roun
 - **Weather** now has its own random stream, so a seed brings the same rain whatever the animals do.
 
 Last `check-populations.js` run: all checks pass. A cleared strip split *West meadow* into *West meadow* and *West marsh*, which merged back once the gap was resettled. Tick cost is about 0.4 ms. Energy, pyramid and cycle checks all still pass.
+
+**P3-M5 Demography: built.** In `js/demography.js`, wired into `sim.js`.
+
+- **The regional pool:** every species (except the player's and invaders) has a regional population behind the map edges. Small groups of both sexes, or patches of a Population, arrive at an edge at about 0.4 groups per round, up to 7 times more often as the species falls toward zero (the rescue effect), so a species wiped out locally recolonizes. Pool-only species (a scenario's `start: 'pool'` slots, like the extirpated apex predator in *Rewilding the ranch*) never arrive on their own; `reintroduce()` releases founders. A regionally extinct species never returns. Arrivals and departures go through the energy and nitrogen ledgers as imports and exports.
+- **Emigration:** above 0.8 K, young adults without a territory head for the nearest edge and leave. Populations send dispersers off from their edge tiles.
+- **Carrying capacity:** each round, K = the food energy available to the species (its share of each food's production, times its assimilation efficiency) ÷ one individual's upkeep over the round, smoothed across rounds.
+- **The round table:** every species gets N0, B, I, D, E, N1 and r = ((B + I) − (D + E)) ÷ N0 × 100, balancing exactly for individual animals, plus a curve label: exponential, logistic, stable, overshoot, declining or recolonizing.
+- **Sexes and mating systems:** individuals are male or female, and only females start breeding. Birds and pack canids are monogamous (pairs stay together), other mammals polygynous (males breed without a rest), and ectotherms breed explosively and need at least 2 others of their kind within 5 tiles (the Allee threshold). Decomposers stay asexual. There are no lonely clones: a female without a male doesn't breed.
+- **Territories:** a female of a territorial species must claim a territory that doesn't overlap another of her species (radius 2–10 tiles, growing with body mass) before breeding; floaters can't breed. A territory is freed when its holder dies or emigrates.
+- **Disease** strikes the species furthest above its K, not simply the most numerous.
+- **In the inspector:** N / K, the curve, the mating system, regional pool status, last round's equation with its numbers, and an age pyramid (juvenile, breeding, post-reproductive; males left, females right). Individuals show their sex, and whether they hold a territory or are emigrating.
+- **Closed worlds:** `createWorld({ closed: true })` shuts the regional pool. The energy and cycle checks use it, since the textbook's efficiencies describe a closed system.
+
+Last `check-demography.js` run: all checks pass; 108 species-rounds balanced exactly. Pyramid, cycle, population and catalog checks pass. The cycle check's compaction test now sums 3 seeds against a 1.10× denitrification threshold (fewer animals, since breeding needs a male, leave less nitrate to denitrify). `check-energy.js` Game mode is unchanged. Realism mode's endotherm tissue growth now reads −3.7% (it was blank before, with no endotherms left to measure), which is still the known Realism imbalance.
 
 Predators last longer than in Phase 2: with a Grazer player, apex predators now survive all 10 test rounds, and primary carnivores mostly do. **Realism mode isn't balanced yet:** endotherms and predators die out within 10 rounds.
 

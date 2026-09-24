@@ -1,4 +1,4 @@
-// Smoke tests: world events, inheritance, speciation, save/load v2 round-trip, v1 migration and ledger conservation.
+// Smoke tests: world events, inheritance, speciation, save/load round-trip, refusing old saves, and ledger conservation.
 //   node tools/check-events.js
 const T = require('./load.js');
 const B = T.BALANCE;
@@ -59,21 +59,10 @@ for (let i = 0; i < 300; i++) w2.tick();
 assert(w2.checkLedger().err < 1e-6, 'ledger conserved after load');
 console.log('     save size', Math.round(JSON.stringify(s).length / 1024), 'KB');
 
-// v1 (Phase 1) migration: build a v1-shaped save from Meadow defs
-const v1 = {
-  v: 1, seed: 9, t: 100, rng: 12345, nextId: 999, biomeLight: 1, eventLight: 1, growthMod: 1, ectoSlowAll: false, marker: null, cumulative: { captured: 0 },
-  species: T.NPC_SPECIES.map(d => ({ id: d.id, name: d.name, isPlayer: false, level: d.level, base: d.base, eats: d.eats, flags: d.flags || {}, genome: Object.assign({ metabolism: 'endo', organs: {} }, d.genome), startPop: d.startPop, herdSize: d.herdSize || null }))
-    .concat([{ id: 'player', name: 'Old Grazers', isPlayer: true, level: 'herbivore', base: { speed: 0.15, sight: 6 }, eats: [], flags: {}, genome: { size: 3, diet: 0, speed: 2, repro: 3, metabolism: 'endo', organs: {} }, startPop: 20 }]),
-  terrain: Array.from(w.terrain), ptype: Array.from(w.ptype).map(t => Math.min(4, t)), pE: Array.from(w.pE), fruit: Array.from(w.fruit), detr: Array.from(w.detr), nutr: Array.from(w.nutr),
-  ents: [], carrion: [],
-};
-for (let k = 0; k < 30; k++) v1.ents.push([k % 10, 10 + (k % 7), 10 + ((k * 3) % 11), 500, 20, 0, null]);
-for (let k = 0; k < 12; k++) v1.ents.push([10, 30 + (k % 4), 30, 400, 20, 0, null]);
-const w3 = T.loadWorld(v1, {});
-assert(w3.migratedFromV1 && w3.player && w3.player.name === 'Old Grazers', 'v1 save migrates with the player species intact');
-assert(Math.abs(w3.player.mean[T.G.speed] - 2) < 0.6, 'v1 trait levels become gene values (speed ' + w3.player.mean[T.G.speed].toFixed(2) + ')');
-for (let i = 0; i < 200; i++) w3.tick();
-assert(w3.checkLedger().err < 1e-6, 'ledger conserved after v1 migration');
+// Saves from an older version are refused, not migrated.
+let refused = false;
+try { T.loadWorld(Object.assign({}, s, { v: 2 }), {}); } catch (e) { refused = /older version/.test(e.message); }
+assert(refused, 'a save from an older version is refused with a message');
 
 // generator
 const r = T.Gen.generateRoster(777, 'meadow');
